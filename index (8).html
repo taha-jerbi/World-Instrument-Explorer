@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Musical Instruments Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ocean: #0a1628;
+    --deep: #0d1f3c;
+    --land: #1a3a5c;
+    --land-hover: #c47d3a;
+    --land-active: #e8a030;
+    --gold: #e8a030;
+    --gold-light: #f5c878;
+    --cream: #f0e8d8;
+    --text: #e8dcc8;
+    --muted: #8fa8c0;
+    --card-bg: rgba(15,30,55,0.85);
+    --border: rgba(232,160,48,0.2);
+    --glow: rgba(232,160,48,0.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; min-height: 100vh; background: var(--ocean); color: var(--text); font-family: 'DM Mono', monospace; overflow-x: hidden; }
+
+  /* Header */
+  header {
+    padding: 1.5rem 2rem 1rem;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(10,22,40,0.95) 0%, transparent 100%);
+    position: relative; z-index: 10;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { font-size: 28px; }
+  .logo-text { font-family: 'Playfair Display', serif; font-size: 1.25rem; color: var(--gold-light); letter-spacing: 0.02em; }
+  .logo-sub { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 1px; }
+  .view-toggle { display: flex; gap: 8px; }
+  .toggle-btn {
+    padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; letter-spacing: 0.1em; cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase;
+  }
+  .toggle-btn.active, .toggle-btn:hover { background: var(--gold); color: var(--ocean); border-color: var(--gold); font-weight: 500; }
+  .count-badge { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.08em; }
+
+  /* Main layout */
+  main { display: flex; flex-direction: column; align-items: center; padding: 1rem 1.5rem 2rem; gap: 1.5rem; }
+
+  /* Map container */
+  #view-container {
+    width: 100%; max-width: 1100px;
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+    position: relative;
+    background: radial-gradient(ellipse at 50% 40%, #0d2a4a 0%, var(--ocean) 70%);
+    box-shadow: 0 0 60px rgba(232,160,48,0.08), inset 0 0 80px rgba(0,0,0,0.4);
+  }
+
+  /* Flat map */
+  #flat-view { display: block; width: 100%; }
+  svg#worldmap { width: 100%; height: auto; display: block; cursor: crosshair; }
+  svg#worldmap path { fill: var(--land); stroke: var(--ocean); stroke-width: 0.4; transition: fill 0.15s; }
+  svg#worldmap path:hover { fill: var(--land-hover); }
+  svg#worldmap path.active { fill: var(--land-active); }
+
+  /* 3D canvas */
+  #globe-view { display: none; width: 100%; }
+  #globe-canvas { width: 100%; display: block; cursor: grab; }
+  #globe-canvas:active { cursor: grabbing; }
+  #globe-hint { position: absolute; bottom: 8px; right: 12px; font-size: 0.6rem; color: var(--muted); letter-spacing: 0.08em; pointer-events: none; }
+
+  .map-overlay { position: absolute; bottom: 8px; left: 12px; display: flex; gap: 12px; font-size: 0.6rem; color: var(--muted); letter-spacing: 0.06em; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* Info panel */
+  #panel {
+    width: 100%; max-width: 1100px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-height: 180px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+  }
+  #hint-screen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 120px; gap: 8px;
+    color: var(--muted); font-size: 0.8rem; letter-spacing: 0.08em; text-align: center;
+  }
+  .hint-globe { font-size: 2.5rem; opacity: 0.4; animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+  .country-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .country-name { font-family: 'Playfair Display', serif; font-size: 1.5rem; color: var(--gold-light); }
+  .country-region { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; border: 1px solid var(--border); border-radius: 3px; padding: 2px 8px; }
+
+  #instruments-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px; margin-top: 16px;
+  }
+  .inst-card {
+    background: rgba(10,22,40,0.7);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+    transition: border-color 0.2s, transform 0.15s;
+    cursor: default;
+  }
+  .inst-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+  .inst-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .inst-emoji { font-size: 20px; }
+  .inst-play-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--gold); cursor: pointer; font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .inst-play-btn:hover { background: var(--gold); color: var(--ocean); border-color: var(--gold); }
+  .inst-play-btn.playing { background: var(--gold); color: var(--ocean); animation: pulse 0.6s infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+  .inst-name { font-size: 0.85rem; font-weight: 500; color: var(--cream); }
+  .inst-desc { font-size: 0.7rem; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .inst-dl-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 8px; padding: 3px 8px; border-radius: 3px;
+    border: 1px solid rgba(232,160,48,0.15); background: transparent;
+    color: var(--muted); font-size: 0.6rem; letter-spacing: 0.06em;
+    cursor: pointer; font-family: 'DM Mono', monospace;
+    transition: all 0.15s; text-transform: uppercase;
+  }
+  .inst-dl-btn:hover { background: rgba(232,160,48,0.1); color: var(--gold-light); border-color: var(--gold); }
+
+  /* Audiotool send button */
+  .inst-at-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    margin-top: 6px; padding: 5px 10px; border-radius: 4px;
+    border: 1px solid rgba(100,200,255,0.25); background: transparent;
+    color: #7ac8f5; font-family: 'DM Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s;
+    width: 100%;
+  }
+  .inst-at-btn:hover { background: rgba(100,200,255,0.1); border-color: #7ac8f5; color: #b0e0ff; }
+  .inst-at-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .inst-at-btn.sending { animation: pulse 0.6s infinite; }
+
+  /* Audiotool config button in header */
+  .at-config-btn {
+    padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(100,200,255,0.3);
+    background: transparent; color: #7ac8f5; font-family: 'DM Mono', monospace;
+    font-size: 0.68rem; letter-spacing: 0.08em; cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase;
+  }
+  .at-config-btn:hover, .at-config-btn.configured { background: rgba(100,200,255,0.12); border-color: #7ac8f5; }
+  .at-config-btn.configured { color: #a0f0c0; border-color: rgba(100,240,150,0.4); }
+
+  /* Modal overlay */
+  #at-modal {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(5,12,25,0.85); backdrop-filter: blur(6px);
+    align-items: center; justify-content: center;
+  }
+  #at-modal.open { display: flex; }
+  .at-modal-box {
+    background: #0d1f3c; border: 1px solid rgba(100,200,255,0.3);
+    border-radius: 12px; padding: 2rem; width: 100%; max-width: 480px;
+    box-shadow: 0 0 60px rgba(100,200,255,0.1);
+    font-family: 'DM Mono', monospace;
+  }
+  .at-modal-title { font-family: 'Playfair Display', serif; font-size: 1.2rem; color: #a0d8f5; margin-bottom: 0.3rem; }
+  .at-modal-sub { font-size: 0.65rem; color: var(--muted); letter-spacing: 0.08em; margin-bottom: 1.4rem; }
+  .at-field { margin-bottom: 1rem; }
+  .at-label { display: block; font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+  .at-input {
+    width: 100%; padding: 8px 12px; border-radius: 6px;
+    border: 1px solid rgba(100,200,255,0.2); background: rgba(255,255,255,0.04);
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.8rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .at-input:focus { border-color: #7ac8f5; }
+  .at-input::placeholder { color: var(--muted); }
+  .at-hint { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
+  .at-hint a { color: #7ac8f5; }
+  .at-modal-actions { display: flex; gap: 10px; margin-top: 1.4rem; justify-content: flex-end; }
+  .at-btn-save {
+    padding: 8px 20px; border-radius: 6px; border: none;
+    background: #7ac8f5; color: #0a1628; font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; font-weight: 500; cursor: pointer; letter-spacing: 0.06em;
+    transition: all 0.2s;
+  }
+  .at-btn-save:hover { background: #b0e0ff; }
+  .at-btn-cancel {
+    padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; cursor: pointer; transition: all 0.2s;
+  }
+  .at-btn-cancel:hover { color: var(--text); border-color: var(--text); }
+
+  /* Toast notifications */
+  #at-toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 2000;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .at-toast-item {
+    padding: 10px 16px; border-radius: 8px; font-size: 0.72rem;
+    font-family: 'DM Mono', monospace; letter-spacing: 0.04em;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); pointer-events: all;
+    animation: slideIn 0.25s ease; max-width: 320px;
+  }
+  .at-toast-item.info  { background: #0d2a4a; border: 1px solid rgba(100,200,255,0.3); color: #a0d8f5; }
+  .at-toast-item.ok    { background: #0a2a1a; border: 1px solid rgba(100,240,150,0.3); color: #a0f0b0; }
+  .at-toast-item.error { background: #2a0d0d; border: 1px solid rgba(255,100,100,0.3); color: #f5a0a0; }
+  @keyframes slideIn { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
+
+  /* No data */
+  .no-data { color: var(--muted); font-size: 0.8rem; padding: 1rem 0; text-align: center; letter-spacing: 0.06em; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    header { padding: 1rem; flex-wrap: wrap; gap: 8px; }
+    main { padding: 0.75rem; gap: 1rem; }
+    #instruments-grid { grid-template-columns: 1fr 1fr; }
+    .country-name { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🎵</div>
+    <div>
+      <div class="logo-text">World Instruments</div>
+      <div class="logo-sub">Sonic Atlas of the World</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <span class="count-badge" id="country-count"></span>
+    <div class="view-toggle">
+      <button class="toggle-btn active" id="btn-flat" onclick="setView('flat')">🗺 Flat</button>
+      <button class="toggle-btn" id="btn-globe" onclick="setView('globe')">🌍 3D Globe</button>
+    </div>
+    <button class="at-config-btn" id="at-config-btn" onclick="openATModal()" title="Configure Audiotool integration">🎹 Audiotool</button>
+  </div>
+</header>
+
+<main>
+  <div id="view-container">
+    <div id="flat-view">
+      <svg id="worldmap" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="globe-view">
+      <canvas id="globe-canvas"></canvas>
+      <div id="globe-hint">drag to rotate · scroll to zoom · click country</div>
+    </div>
+    <div class="map-overlay">
+      <div class="legend-item"><div class="legend-dot" style="background:#1a3a5c"></div>country</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e8a030"></div>selected</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c47d3a"></div>hover</div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="hint-screen">
+      <div class="hint-globe">🌍</div>
+      <div>Click any country to explore its traditional instruments</div>
+      <div style="font-size:0.65rem;opacity:0.6">and play synthesized audio samples</div>
+    </div>
+  </div>
+</main>
+
+<!-- Audiotool Configuration Modal -->
+<div id="at-modal">
+  <div class="at-modal-box">
+    <div class="at-modal-title">🎹 Audiotool Integration</div>
+    <div class="at-modal-sub">CONNECT YOUR AUDIOTOOL PROJECT · SEND SAMPLES DIRECTLY TO THE DAW</div>
+
+    <div class="at-field">
+      <label class="at-label" for="at-client-id">App Client ID</label>
+      <input class="at-input" id="at-client-id" type="text" placeholder="e.g. abc123..." spellcheck="false">
+      <div class="at-hint">Register your app at <a href="https://developer.audiotool.com/applications" target="_blank">developer.audiotool.com/applications</a> with redirect URI <code>http://127.0.0.1:5500/</code> and scope <code>project:write</code>.</div>
+    </div>
+
+    <div class="at-field">
+      <label class="at-label" for="at-project-url">Project URL</label>
+      <input class="at-input" id="at-project-url" type="text" placeholder="https://beta.audiotool.com/studio?project=..." spellcheck="false">
+      <div class="at-hint">Open your project in <a href="https://new.audiotool.com" target="_blank">Audiotool</a> and copy the URL from the browser address bar.</div>
+    </div>
+
+    <div class="at-field">
+      <label class="at-label" for="at-redirect-url">Redirect URI (must match your app registration)</label>
+      <input class="at-input" id="at-redirect-url" type="text" value="http://127.0.0.1:5500/" spellcheck="false">
+      <div class="at-hint">If you're using VS Code Live Server this is typically <code>http://127.0.0.1:5500/</code>. Must be registered in your Audiotool app.</div>
+    </div>
+
+    <div class="at-modal-actions">
+      <button class="at-btn-cancel" onclick="closeATModal()">Cancel</button>
+      <button class="at-btn-save" onclick="saveATConfig()">Save & Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="at-toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ──────────────────────────────────────────────
+// INSTRUMENT DATA  (195+ countries)
+// ──────────────────────────────────────────────
+const instruments = {
+  "Afghanistan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Rubab", desc: "Short-necked lute, national instrument", type: "pluck" }, { emoji: "🎵", name: "Dutaar", desc: "Long-necked 2-stringed lute", type: "pluck" }, { emoji: "🥁", name: "Zerbaghali", desc: "Goblet-shaped clay drum", type: "drum" }, { emoji: "🎺", name: "Sornay", desc: "Double-reed wind instrument", type: "reed" }] },
+  "Albania": { region: "Southern Europe", instruments: [{ emoji: "🎵", name: "Lahuta", desc: "Single-stringed bowed fiddle", type: "bow" }, { emoji: "🪗", name: "Çifteli", desc: "2-stringed plucked lute", type: "pluck" }, { emoji: "🎺", name: "Zumarë", desc: "Double-reed clarinet", type: "reed" }, { emoji: "🥁", name: "Lodër", desc: "Frame drum", type: "drum" }] },
+  "Algeria": { region: "North Africa", instruments: [{ emoji: "🎵", name: "Guembri", desc: "3-stringed bass lute of Gnawa music", type: "pluck" }, { emoji: "🥁", name: "Bendir", desc: "Frame drum with snare", type: "drum" }, { emoji: "🎺", name: "Gasba", desc: "Open-ended reed flute", type: "flute" }, { emoji: "🎵", name: "Oud", desc: "Classical Arabic lute", type: "pluck" }] },
+  "Angola": { region: "Central Africa", instruments: [{ emoji: "🎵", name: "Mbira", desc: "Thumb piano", type: "mbira" }, { emoji: "🥁", name: "Ngoma", desc: "Double-headed drum", type: "drum" }, { emoji: "🎵", name: "Kissange", desc: "Lamellaphone with wooden keys", type: "mbira" }, { emoji: "🎺", name: "Hungu", desc: "Musical bow", type: "bow" }] },
+  "Argentina": { region: "South America", instruments: [{ emoji: "🪗", name: "Bandoneón", desc: "Button concertina for tango", type: "accordion" }, { emoji: "🎸", name: "Guitar", desc: "Classical guitar for folk music", type: "guitar" }, { emoji: "🎻", name: "Violin", desc: "Tango orchestras violin", type: "bow" }, { emoji: "🥁", name: "Bombo Leguero", desc: "Large folkloric drum", type: "drum" }] },
+  "Armenia": { region: "Caucasus", instruments: [{ emoji: "🎺", name: "Duduk", desc: "Ancient double-reed apricot wood flute", type: "reed" }, { emoji: "🎵", name: "Kanon", desc: "Plucked zither", type: "pluck" }, { emoji: "🥁", name: "Dhol", desc: "Double-headed barrel drum", type: "drum" }, { emoji: "🎵", name: "Kamancha", desc: "Bowed spike fiddle", type: "bow" }] },
+  "Australia": { region: "Oceania", instruments: [{ emoji: "🎺", name: "Didgeridoo", desc: "Wind instrument, Aboriginal Australians", type: "drone" }, { emoji: "🥁", name: "Clapping Sticks", desc: "Wooden percussion sticks", type: "perc" }, { emoji: "🎵", name: "Bullroarer", desc: "Ancient whirled ceremonial instrument", type: "drone" }, { emoji: "🪘", name: "Bilma", desc: "Hardwood clapsticks", type: "perc" }] },
+  "Austria": { region: "Central Europe", instruments: [{ emoji: "🎵", name: "Zither", desc: "Alpine plucked string instrument", type: "pluck" }, { emoji: "🎺", name: "Alphorn", desc: "Long natural horn", type: "brass" }, { emoji: "🪗", name: "Steirische Harmonika", desc: "Diatonic button accordion", type: "accordion" }, { emoji: "🎻", name: "Fiddle", desc: "Alpine folk fiddle", type: "bow" }] },
+  "Azerbaijan": { region: "Caucasus", instruments: [{ emoji: "🎵", name: "Tar", desc: "Double-bellied long-necked lute", type: "pluck" }, { emoji: "🎵", name: "Kamancha", desc: "Bowed spike fiddle", type: "bow" }, { emoji: "🥁", name: "Nagara", desc: "Cylindrical drum", type: "drum" }, { emoji: "🎵", name: "Saz", desc: "Long-necked lute", type: "pluck" }] },
+  "Bahrain": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute in liwa music", type: "pluck" }, { emoji: "🥁", name: "Mirwas", desc: "Small hand drum", type: "drum" }, { emoji: "🎺", name: "Surnay", desc: "Double-reed oboe", type: "reed" }, { emoji: "🪘", name: "Tasa", desc: "Small metal kettle drum", type: "drum" }] },
+  "Bangladesh": { region: "South Asia", instruments: [{ emoji: "🎵", name: "Dotara", desc: "2-stringed plucked lute", type: "pluck" }, { emoji: "🥁", name: "Dhol", desc: "Barrel drum", type: "drum" }, { emoji: "🎺", name: "Bansuri", desc: "Bamboo flute", type: "flute" }, { emoji: "🎵", name: "Ektara", desc: "One-string drone lute of bauls", type: "pluck" }] },
+  "Belarus": { region: "Eastern Europe", instruments: [{ emoji: "🎵", name: "Gusli", desc: "Multi-string psaltery", type: "pluck" }, { emoji: "🎺", name: "Dudka", desc: "Wooden flute", type: "flute" }, { emoji: "🥁", name: "Buben", desc: "Frame drum", type: "drum" }, { emoji: "🎵", name: "Lira", desc: "Belarusian hurdy-gurdy", type: "bow" }] },
+  "Belgium": { region: "Western Europe", instruments: [{ emoji: "🪗", name: "Accordion", desc: "Popular in Flemish folk dances", type: "accordion" }, { emoji: "🎵", name: "Carillon", desc: "Tower bell instrument, UNESCO heritage", type: "bells" }, { emoji: "🎻", name: "Fiddle", desc: "Flemish folk fiddle", type: "bow" }, { emoji: "🎺", name: "Saxophone", desc: "Invented by Belgian Adolphe Sax", type: "reed" }] },
+  "Belize": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "Wooden xylophone in Garifuna music", type: "marimba" }, { emoji: "🥁", name: "Garawoun", desc: "Garifuna turtle-shell drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }, { emoji: "🪘", name: "Shaker", desc: "Gourd rattle", type: "perc" }] },
+  "Benin": { region: "West Africa", instruments: [{ emoji: "🥁", name: "Gan", desc: "Iron bell used in voodoo rituals", type: "bells" }, { emoji: "🥁", name: "Bata", desc: "Double-headed sacred drum", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "21-string bridge harp", type: "pluck" }, { emoji: "🎺", name: "Flute", desc: "Ivory flute", type: "flute" }] },
+  "Bhutan": { region: "South Asia", instruments: [{ emoji: "🎺", name: "Dramnyen", desc: "Lute with silk strings", type: "pluck" }, { emoji: "🎺", name: "Lingm", desc: "Transverse bamboo flute", type: "flute" }, { emoji: "🥁", name: "Chiwang", desc: "2-stringed fiddle", type: "bow" }, { emoji: "🪘", name: "Nga", desc: "Large ceremonial drum", type: "drum" }] },
+  "Bolivia": { region: "South America", instruments: [{ emoji: "🎺", name: "Siku (Zampoña)", desc: "Pan flute of the Andes", type: "panpipe" }, { emoji: "🎺", name: "Quena", desc: "Notched end flute", type: "flute" }, { emoji: "🎵", name: "Charango", desc: "Small 10-stringed Andean lute", type: "pluck" }, { emoji: "🥁", name: "Bombo", desc: "Large Andean bass drum", type: "drum" }] },
+  "Bosnia and Herzegovina": { region: "Southeast Europe", instruments: [{ emoji: "🎵", name: "Saz", desc: "Long-necked lute in sevdalinka music", type: "pluck" }, { emoji: "🎸", name: "Šargija", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🎺", name: "Zurna", desc: "Double-reed wind instrument", type: "reed" }, { emoji: "🥁", name: "Tapan", desc: "Double-headed drum", type: "drum" }] },
+  "Botswana": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Segankure", desc: "Musical bow with gourd resonator", type: "bow" }, { emoji: "🥁", name: "Moropa", desc: "Cylindrical drum", type: "drum" }, { emoji: "🎵", name: "Dipela", desc: "Reed flute ensemble", type: "flute" }, { emoji: "🪘", name: "Setinkane", desc: "Thumb piano", type: "mbira" }] },
+  "Brazil": { region: "South America", instruments: [{ emoji: "🥁", name: "Surdo", desc: "Bass drum for samba rhythms", type: "drum" }, { emoji: "🎸", name: "Cavaquinho", desc: "Small 4-stringed guitar", type: "guitar" }, { emoji: "🪘", name: "Pandeiro", desc: "Brazilian tambourine", type: "drum" }, { emoji: "🎵", name: "Berimbau", desc: "Bow instrument used in capoeira", type: "bow" }] },
+  "Bulgaria": { region: "Southeast Europe", instruments: [{ emoji: "🎺", name: "Gaida", desc: "Bulgarian bagpipe", type: "reed" }, { emoji: "🎵", name: "Gadulka", desc: "Bowed string instrument", type: "bow" }, { emoji: "🎺", name: "Kaval", desc: "End-blown flute", type: "flute" }, { emoji: "🥁", name: "Tapan", desc: "Double-headed drum", type: "drum" }] },
+  "Burkina Faso": { region: "West Africa", instruments: [{ emoji: "🪗", name: "Balafon", desc: "Gourd-resonated xylophone", type: "marimba" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "21-string harp-lute", type: "pluck" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }] },
+  "Burundi": { region: "East Africa", instruments: [{ emoji: "🥁", name: "Ingoma", desc: "Sacred royal drum ensemble", type: "drum" }, { emoji: "🎵", name: "Inanga", desc: "Trough zither", type: "pluck" }, { emoji: "🎺", name: "Iningiri", desc: "Bow lute", type: "bow" }, { emoji: "🪘", name: "Ikembe", desc: "Thumb piano", type: "mbira" }] },
+  "Cambodia": { region: "Southeast Asia", instruments: [{ emoji: "🪗", name: "Roneat", desc: "Bamboo xylophone", type: "marimba" }, { emoji: "🎵", name: "Tro Khmer", desc: "Bowed string instrument", type: "bow" }, { emoji: "🎺", name: "Sralai", desc: "Quadruple-reed oboe", type: "reed" }, { emoji: "🥁", name: "Skor Thom", desc: "Large barrel drum", type: "drum" }] },
+  "Cameroon": { region: "Central Africa", instruments: [{ emoji: "🥁", name: "Balafon", desc: "West African xylophone", type: "marimba" }, { emoji: "🎵", name: "Mvet", desc: "Multi-string chordophone", type: "pluck" }, { emoji: "🥁", name: "Tam-tam", desc: "Slit log drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo folk flute", type: "flute" }] },
+  "Canada": { region: "North America", instruments: [{ emoji: "🎻", name: "Fiddle", desc: "Celtic and Métis fiddle traditions", type: "bow" }, { emoji: "🎵", name: "Jaw Harp", desc: "Used by Indigenous peoples", type: "drone" }, { emoji: "🪗", name: "Accordion", desc: "In Acadian and Québécois music", type: "accordion" }, { emoji: "🥁", name: "Pow Wow Drum", desc: "Sacred drum of First Nations", type: "drum" }] },
+  "Cape Verde": { region: "West Africa", instruments: [{ emoji: "🎸", name: "Viola Cabo-verdiana", desc: "9-stringed guitar for morna", type: "guitar" }, { emoji: "🥁", name: "Batuque Drum", desc: "Percussion for batuque dance", type: "drum" }, { emoji: "🎵", name: "Cavaquinho", desc: "Small guitar for coladeira", type: "guitar" }, { emoji: "🪘", name: "Shaker", desc: "Gourd rattle", type: "perc" }] },
+  "Central African Republic": { region: "Central Africa", instruments: [{ emoji: "🎵", name: "Hindewhu", desc: "Single-pitch whistle flute", type: "flute" }, { emoji: "🥁", name: "Ngbaka Drum", desc: "Slit drum", type: "drum" }, { emoji: "🎵", name: "Mbira", desc: "Thumb piano", type: "mbira" }, { emoji: "🎺", name: "Horn", desc: "Animal horn wind instrument", type: "brass" }] },
+  "Chad": { region: "Central Africa", instruments: [{ emoji: "🎵", name: "Kinde", desc: "Bow harp", type: "pluck" }, { emoji: "🥁", name: "Gonje", desc: "One-string fiddle", type: "bow" }, { emoji: "🎺", name: "Kakaki", desc: "Long ceremonial trumpet", type: "brass" }, { emoji: "🥁", name: "Drum", desc: "Talking drum", type: "drum" }] },
+  "Chile": { region: "South America", instruments: [{ emoji: "🎺", name: "Trutruka", desc: "Long Mapuche trumpet", type: "brass" }, { emoji: "🥁", name: "Kultrún", desc: "Sacred Mapuche frame drum", type: "drum" }, { emoji: "🎸", name: "Guitarrón Chileno", desc: "25-stringed guitar, UNESCO heritage", type: "guitar" }, { emoji: "🎺", name: "Quena", desc: "Andean notched flute", type: "flute" }] },
+  "China": { region: "East Asia", instruments: [{ emoji: "🎵", name: "Erhu", desc: "2-stringed bowed fiddle", type: "bow" }, { emoji: "🎵", name: "Pipa", desc: "4-stringed pear-shaped lute", type: "pluck" }, { emoji: "🪗", name: "Guzheng", desc: "21-stringed plucked zither", type: "pluck" }, { emoji: "🎺", name: "Dizi", desc: "Transverse bamboo flute", type: "flute" }] },
+  "Colombia": { region: "South America", instruments: [{ emoji: "🪗", name: "Vallenato Accordion", desc: "Diatonic button accordion", type: "accordion" }, { emoji: "🥁", name: "Caja Drum", desc: "Small cylindrical drum", type: "drum" }, { emoji: "🎵", name: "Gaita", desc: "Indigenous flute of Zenú peoples", type: "flute" }, { emoji: "🪘", name: "Maracas", desc: "Gourd rattles", type: "perc" }] },
+  "Comoros": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Gabusi", desc: "Oud-like lute", type: "pluck" }, { emoji: "🥁", name: "Ndzendze", desc: "Box zither", type: "pluck" }, { emoji: "🥁", name: "Drum", desc: "Mramba frame drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }] },
+  "Congo": { region: "Central Africa", instruments: [{ emoji: "🥁", name: "Ngoma", desc: "Ceremonial drum", type: "drum" }, { emoji: "🎵", name: "Lokole", desc: "Slit drum", type: "drum" }, { emoji: "🎵", name: "Mbira", desc: "Thumb piano", type: "mbira" }, { emoji: "🪗", name: "Likembe", desc: "Box thumb piano", type: "mbira" }] },
+  "Congo, Democratic Republic of the": { region: "Central Africa", instruments: [{ emoji: "🥁", name: "Slit Drum", desc: "Carved log percussion", type: "drum" }, { emoji: "🎵", name: "Likembe", desc: "Thumb piano", type: "mbira" }, { emoji: "🎵", name: "Lokole", desc: "Slit drum for communication", type: "drum" }, { emoji: "🪘", name: "Ngoma", desc: "Cylindrical drum", type: "drum" }] },
+  "Costa Rica": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "Wooden xylophone, national instrument", type: "marimba" }, { emoji: "🥁", name: "Quijongo", desc: "Single-string musical bow", type: "bow" }, { emoji: "🎺", name: "Chirimía", desc: "Double-reed oboe", type: "reed" }, { emoji: "🥁", name: "Maracas", desc: "Gourd rattles", type: "perc" }] },
+  "Croatia": { region: "Southeast Europe", instruments: [{ emoji: "🎵", name: "Tamburica", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🪗", name: "Diple", desc: "Double-chanter bagpipe", type: "reed" }, { emoji: "🎵", name: "Lijerica", desc: "3-stringed bowed lute of Dalmatia", type: "bow" }, { emoji: "🥁", name: "Gočevi", desc: "Bass drums for klapa music", type: "drum" }] },
+  "Cuba": { region: "Caribbean", instruments: [{ emoji: "🥁", name: "Conga", desc: "Tall narrow-headed Afro-Cuban drum", type: "drum" }, { emoji: "🎸", name: "Tres", desc: "Cuban guitar with 3 pairs of strings", type: "guitar" }, { emoji: "🪘", name: "Bongos", desc: "Pair of small open-bottomed drums", type: "drum" }, { emoji: "🎺", name: "Trumpet", desc: "Lead melody in son cubano", type: "brass" }] },
+  "Czech Republic": { region: "Central Europe", instruments: [{ emoji: "🪗", name: "Dudy", desc: "Czech bagpipe", type: "reed" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin in Moravian music", type: "bow" }, { emoji: "🎵", name: "Cimbál", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎺", name: "Flute", desc: "Shepherd's flute", type: "flute" }] },
+  "Denmark": { region: "Northern Europe", instruments: [{ emoji: "🎺", name: "Lur", desc: "Bronze Age curved horn", type: "brass" }, { emoji: "🎻", name: "Violin", desc: "Folk violin in Danish folk music", type: "bow" }, { emoji: "🪗", name: "Accordion", desc: "Common in Danish folk", type: "accordion" }, { emoji: "🥁", name: "Frame Drum", desc: "Viking-era percussion", type: "drum" }] },
+  "Djibouti": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Siinbiir", desc: "Traditional string instrument", type: "pluck" }, { emoji: "🥁", name: "Drum", desc: "Hand drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Reed flute", type: "flute" }, { emoji: "🪘", name: "Shaker", desc: "Percussion instrument", type: "perc" }] },
+  "Dominican Republic": { region: "Caribbean", instruments: [{ emoji: "🎵", name: "Güira", desc: "Metal scraper for merengue", type: "perc" }, { emoji: "🥁", name: "Tambora", desc: "Two-headed drum in merengue", type: "drum" }, { emoji: "🪗", name: "Accordion", desc: "Lead melody in merengue", type: "accordion" }, { emoji: "🎺", name: "Saxophone", desc: "Merengue brass section", type: "reed" }] },
+  "Ecuador": { region: "South America", instruments: [{ emoji: "🎺", name: "Quena", desc: "Andean notched flute", type: "flute" }, { emoji: "🎺", name: "Pingullo", desc: "3-holed flute of indigenous people", type: "flute" }, { emoji: "🥁", name: "Bombo", desc: "Large drum", type: "drum" }, { emoji: "🎵", name: "Charango", desc: "Small Andean lute", type: "pluck" }] },
+  "Egypt": { region: "North Africa", instruments: [{ emoji: "🎵", name: "Oud", desc: "Short-necked lute, ancestor of the guitar", type: "pluck" }, { emoji: "🥁", name: "Doumbek", desc: "Goblet-shaped drum", type: "drum" }, { emoji: "🎺", name: "Nay", desc: "Ancient reed flute", type: "flute" }, { emoji: "🎵", name: "Kanun", desc: "Trapezoidal plucked zither", type: "pluck" }] },
+  "El Salvador": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "Wooden xylophone", type: "marimba" }, { emoji: "🎺", name: "Pito", desc: "Small ceramic flute", type: "flute" }, { emoji: "🥁", name: "Chirimía", desc: "Double-reed instrument", type: "reed" }, { emoji: "🪘", name: "Maracas", desc: "Gourd rattles", type: "perc" }] },
+  "Equatorial Guinea": { region: "Central Africa", instruments: [{ emoji: "🎵", name: "Mvet", desc: "Harp-zither", type: "pluck" }, { emoji: "🥁", name: "Drum", desc: "Ceremonial slit drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }, { emoji: "🎵", name: "Sanza", desc: "Thumb piano", type: "mbira" }] },
+  "Eritrea": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Kirar", desc: "5-string lyre", type: "pluck" }, { emoji: "🥁", name: "Kebero", desc: "Conical drum", type: "drum" }, { emoji: "🎺", name: "Shambko", desc: "End-blown flute", type: "flute" }, { emoji: "🎵", name: "Wata", desc: "Bowed fiddle", type: "bow" }] },
+  "Estonia": { region: "Northern Europe", instruments: [{ emoji: "🎵", name: "Kannel", desc: "Estonian zither (psaltery)", type: "pluck" }, { emoji: "🎺", name: "Torupill", desc: "Bagpipe made from calf stomach", type: "reed" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin", type: "bow" }, { emoji: "🪘", name: "Talharpa", desc: "Ancient bowed lyre", type: "bow" }] },
+  "Eswatini": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Makhoyana", desc: "Musical bow with gourd", type: "bow" }, { emoji: "🥁", name: "Ngoma", desc: "Drum", type: "drum" }, { emoji: "🎺", name: "Sidlodlo", desc: "Reed flute", type: "flute" }, { emoji: "🪘", name: "Timbila", desc: "Xylophone", type: "marimba" }] },
+  "Ethiopia": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Krar", desc: "6-stringed lyre", type: "pluck" }, { emoji: "🎺", name: "Washint", desc: "Bamboo flute", type: "flute" }, { emoji: "🥁", name: "Kebero", desc: "Conical double-headed drum", type: "drum" }, { emoji: "🎵", name: "Masenqo", desc: "Single-stringed bowed fiddle", type: "bow" }] },
+  "Fiji": { region: "Oceania", instruments: [{ emoji: "🥁", name: "Lali", desc: "Large slit drum for announcements", type: "drum" }, { emoji: "🎺", name: "Davui", desc: "Conch shell trumpet", type: "brass" }, { emoji: "🪘", name: "Derua", desc: "Bamboo percussion tubes", type: "perc" }, { emoji: "🎵", name: "Ukulele", desc: "Adopted and adapted 4-string guitar", type: "guitar" }] },
+  "Finland": { region: "Northern Europe", instruments: [{ emoji: "🎵", name: "Kantele", desc: "National instrument, plucked zither", type: "pluck" }, { emoji: "🎺", name: "Jouhikko", desc: "Bowed lyre", type: "bow" }, { emoji: "🎺", name: "Pilli", desc: "Willow bark flute", type: "flute" }, { emoji: "🪗", name: "Harmonikka", desc: "Finnish button accordion", type: "accordion" }] },
+  "France": { region: "Western Europe", instruments: [{ emoji: "🪗", name: "Accordion", desc: "Button or piano accordion", type: "accordion" }, { emoji: "🎵", name: "Musette", desc: "Small bellows-blown bagpipe", type: "reed" }, { emoji: "🎻", name: "Vielle à roue", desc: "Hurdy-gurdy with a rosined wheel", type: "bow" }, { emoji: "🎺", name: "Cor de chasse", desc: "Circular hunting horn", type: "brass" }] },
+  "Gabon": { region: "Central Africa", instruments: [{ emoji: "🎵", name: "Ngombi", desc: "8-string arched harp", type: "pluck" }, { emoji: "🥁", name: "Mvet", desc: "Harp-zither", type: "pluck" }, { emoji: "🥁", name: "Drum", desc: "Ceremonial drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bark flute", type: "flute" }] },
+  "Gambia": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kora", desc: "21-string harp-lute of the Mandé", type: "pluck" }, { emoji: "🪗", name: "Balafon", desc: "Gourd-resonated xylophone", type: "marimba" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum", type: "drum" }, { emoji: "🎵", name: "Ngoni", desc: "Ancient plucked lute", type: "pluck" }] },
+  "Georgia": { region: "Caucasus", instruments: [{ emoji: "🎵", name: "Panduri", desc: "3-stringed plucked lute", type: "pluck" }, { emoji: "🎵", name: "Chonguri", desc: "4-stringed plucked lute", type: "pluck" }, { emoji: "🎺", name: "Duduki", desc: "Double-reed woodwind", type: "reed" }, { emoji: "🥁", name: "Doli", desc: "Double-headed drum", type: "drum" }] },
+  "Germany": { region: "Western Europe", instruments: [{ emoji: "🪗", name: "Alphorn", desc: "Long natural horn from Alpine regions", type: "brass" }, { emoji: "🪘", name: "Hackbrett", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎺", name: "Waldhorn", desc: "French horn, perfected in Germany", type: "brass" }, { emoji: "🎵", name: "Lute", desc: "Renaissance plucked string instrument", type: "pluck" }] },
+  "Ghana": { region: "West Africa", instruments: [{ emoji: "🥁", name: "Fontomfrom", desc: "Royal court drums", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "21-string bridge harp", type: "pluck" }, { emoji: "🪗", name: "Gyil", desc: "West African xylophone", type: "marimba" }, { emoji: "🎺", name: "Atenteben", desc: "Bamboo flute", type: "flute" }] },
+  "Greece": { region: "Southern Europe", instruments: [{ emoji: "🎵", name: "Bouzouki", desc: "Long-necked plucked lute, icon of rebetiko", type: "pluck" }, { emoji: "🎻", name: "Lyra", desc: "Bowed pear-shaped fiddle", type: "bow" }, { emoji: "🪘", name: "Tzouras", desc: "Smaller bouzouki variant", type: "pluck" }, { emoji: "🪗", name: "Accordion", desc: "Adopted into laïkó music", type: "accordion" }] },
+  "Guatemala": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "National instrument, wooden xylophone", type: "marimba" }, { emoji: "🥁", name: "Tun", desc: "Maya slit drum", type: "drum" }, { emoji: "🎺", name: "Chirimía", desc: "Double-reed oboe", type: "reed" }, { emoji: "🎺", name: "Tzicolaj", desc: "Maya bone flute", type: "flute" }] },
+  "Guinea": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kora", desc: "21-string harp-lute", type: "pluck" }, { emoji: "🪗", name: "Balafon", desc: "Xylophone", type: "marimba" }, { emoji: "🥁", name: "Djembe", desc: "West African goblet drum", type: "drum" }, { emoji: "🎵", name: "Bolon", desc: "3-string arched harp", type: "pluck" }] },
+  "Guinea-Bissau": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kora", desc: "Harp-lute", type: "pluck" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }, { emoji: "🪗", name: "Balafon", desc: "Wooden xylophone", type: "marimba" }] },
+  "Guyana": { region: "South America", instruments: [{ emoji: "🎺", name: "Waracaba", desc: "Flute of the Warao people", type: "flute" }, { emoji: "🥁", name: "Drum", desc: "Indigenous ceremonial drum", type: "drum" }, { emoji: "🪘", name: "Maraka", desc: "Gourd rattle", type: "perc" }, { emoji: "🎺", name: "Hebu mataro", desc: "Warao trumpet", type: "brass" }] },
+  "Haiti": { region: "Caribbean", instruments: [{ emoji: "🥁", name: "Rada Drum", desc: "Sacred Vodou ceremonial drum", type: "drum" }, { emoji: "🎺", name: "Vaksin", desc: "Bamboo trumpet", type: "brass" }, { emoji: "🎵", name: "Manman", desc: "Large mother drum of Vodou", type: "drum" }, { emoji: "🪘", name: "Ogan", desc: "Iron bell struck with metal rod", type: "bells" }] },
+  "Honduras": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "Wooden xylophone", type: "marimba" }, { emoji: "🎺", name: "Flute", desc: "Reed flute", type: "flute" }, { emoji: "🥁", name: "Drum", desc: "Indigenous drum", type: "drum" }, { emoji: "🪘", name: "Maracas", desc: "Gourd rattles", type: "perc" }] },
+  "Hungary": { region: "Central Europe", instruments: [{ emoji: "🎻", name: "Cimbalom", desc: "Large concert hammered dulcimer", type: "bells" }, { emoji: "🎻", name: "Tárogató", desc: "Wooden single-reed wind instrument", type: "reed" }, { emoji: "🪗", name: "Tekerőlant", desc: "Hungarian hurdy-gurdy", type: "bow" }, { emoji: "🎺", name: "Koboz", desc: "Short-necked lute", type: "pluck" }] },
+  "Iceland": { region: "Northern Europe", instruments: [{ emoji: "🎵", name: "Langspil", desc: "2-stringed bowed drone zither", type: "bow" }, { emoji: "🎵", name: "Fiðla", desc: "Icelandic fiddle", type: "bow" }, { emoji: "🎺", name: "Lúðr", desc: "Ancient wooden horn", type: "brass" }, { emoji: "🪘", name: "Frame drum", desc: "Shamanic frame drum", type: "drum" }] },
+  "India": { region: "South Asia", instruments: [{ emoji: "🎵", name: "Sitar", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🥁", name: "Tabla", desc: "Pair of hand drums", type: "drum" }, { emoji: "🎵", name: "Veena", desc: "Ancient plucked string instrument", type: "pluck" }, { emoji: "🎺", name: "Bansuri", desc: "Bamboo transverse flute", type: "flute" }] },
+  "Indonesia": { region: "Southeast Asia", instruments: [{ emoji: "🪗", name: "Gamelan", desc: "Tuned bronze percussion ensemble", type: "bells" }, { emoji: "🎵", name: "Angklung", desc: "Bamboo shaken instrument, UNESCO heritage", type: "perc" }, { emoji: "🎸", name: "Kacapi", desc: "Zither from Sundanese music", type: "pluck" }, { emoji: "🪘", name: "Kendang", desc: "Double-headed barrel drum", type: "drum" }] },
+  "Iran": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Tar", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🎵", name: "Santur", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎺", name: "Ney", desc: "Reed flute", type: "flute" }, { emoji: "🥁", name: "Tombak", desc: "Goblet drum", type: "drum" }] },
+  "Iraq": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Classical Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Tabla", desc: "Goblet-shaped drum", type: "drum" }, { emoji: "🎺", name: "Joza", desc: "4-stringed spike fiddle", type: "bow" }, { emoji: "🎵", name: "Santur", desc: "Hammered dulcimer", type: "bells" }] },
+  "Ireland": { region: "Northern Europe", instruments: [{ emoji: "🎻", name: "Uilleann Pipes", desc: "Bellows-blown Irish bagpipe", type: "reed" }, { emoji: "🪘", name: "Bodhrán", desc: "Frame drum played with a tipper", type: "drum" }, { emoji: "🎻", name: "Fiddle", desc: "Irish style violin", type: "bow" }, { emoji: "🪗", name: "Concertina", desc: "Hexagonal free-reed instrument", type: "accordion" }] },
+  "Israel": { region: "Middle East", instruments: [{ emoji: "🎺", name: "Shofar", desc: "Ram's horn blown on High Holy Days", type: "brass" }, { emoji: "🎵", name: "Kinnor", desc: "Ancient biblical lyre", type: "pluck" }, { emoji: "🎵", name: "Oud", desc: "Arabic lute in Mizrahi music", type: "pluck" }, { emoji: "🥁", name: "Darbuka", desc: "Goblet drum", type: "drum" }] },
+  "Italy": { region: "Southern Europe", instruments: [{ emoji: "🎵", name: "Mandolin", desc: "8-stringed plucked lute from Naples", type: "pluck" }, { emoji: "🪗", name: "Organetto", desc: "Diatonic button accordion", type: "accordion" }, { emoji: "🎺", name: "Zampogna", desc: "Southern Italian bagpipe", type: "reed" }, { emoji: "🥁", name: "Tamburello", desc: "Southern Italian tambourine", type: "drum" }] },
+  "Ivory Coast": { region: "West Africa", instruments: [{ emoji: "🪗", name: "Balafon", desc: "Gourd-resonated xylophone", type: "marimba" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "Harp-lute", type: "pluck" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }] },
+  "Jamaica": { region: "Caribbean", instruments: [{ emoji: "🥁", name: "Nyahbinghi Drum", desc: "Rastafarian ceremonial drum set", type: "drum" }, { emoji: "🎵", name: "Steelpan", desc: "Caribbean tuned percussion", type: "bells" }, { emoji: "🎸", name: "Bass Guitar", desc: "Foundation of reggae music", type: "guitar" }, { emoji: "🪗", name: "Melodica", desc: "Keyboard wind instrument in ska/reggae", type: "accordion" }] },
+  "Japan": { region: "East Asia", instruments: [{ emoji: "🎵", name: "Shamisen", desc: "3-stringed lute played with a plectrum", type: "pluck" }, { emoji: "🎋", name: "Shakuhachi", desc: "Bamboo end-blown flute", type: "flute" }, { emoji: "🥁", name: "Taiko", desc: "Large ceremonial drums", type: "drum" }, { emoji: "🎵", name: "Koto", desc: "13-stringed zither", type: "pluck" }] },
+  "Jordan": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Rababa", desc: "Spike fiddle of Bedouin tradition", type: "bow" }, { emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Tabla", desc: "Goblet drum", type: "drum" }, { emoji: "🎺", name: "Nay", desc: "Reed flute", type: "flute" }] },
+  "Kazakhstan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Dombra", desc: "2-stringed plucked lute, national instrument", type: "pluck" }, { emoji: "🎺", name: "Kobyz", desc: "Ancient bowed string instrument", type: "bow" }, { emoji: "🎵", name: "Zhetigen", desc: "7-stringed zither", type: "pluck" }, { emoji: "🎺", name: "Sybyzgy", desc: "Notched flute", type: "flute" }] },
+  "Kenya": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Nyatiti", desc: "8-stringed lyre of the Luo people", type: "pluck" }, { emoji: "🥁", name: "Engoma", desc: "Drums used in ceremonies", type: "drum" }, { emoji: "🎺", name: "Isukuti", desc: "Double-headed drum", type: "drum" }, { emoji: "🎵", name: "Orutu", desc: "One-string fiddle", type: "bow" }] },
+  "Kuwait": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Mirwas", desc: "Hand drum in leiwah music", type: "drum" }, { emoji: "🎺", name: "Fidjeri", desc: "Pearl-diving chanting instrument", type: "flute" }, { emoji: "🎵", name: "Rababa", desc: "Spike fiddle", type: "bow" }] },
+  "Kyrgyzstan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Komuz", desc: "3-stringed plucked lute, national instrument", type: "pluck" }, { emoji: "🎺", name: "Choor", desc: "End-blown flute", type: "flute" }, { emoji: "🎵", name: "Ooz Komuz", desc: "Jaw harp", type: "drone" }, { emoji: "🥁", name: "Dobulbas", desc: "Kettledrum", type: "drum" }] },
+  "Laos": { region: "Southeast Asia", instruments: [{ emoji: "🪗", name: "Khaen", desc: "Free-reed mouth organ, national instrument", type: "accordion" }, { emoji: "🎵", name: "So U", desc: "2-stringed fiddle", type: "bow" }, { emoji: "🎺", name: "Khui", desc: "Bamboo flute", type: "flute" }, { emoji: "🪗", name: "Ranat", desc: "Wooden xylophone", type: "marimba" }] },
+  "Latvia": { region: "Northern Europe", instruments: [{ emoji: "🎵", name: "Kokle", desc: "Plucked zither, Latvian psaltery", type: "pluck" }, { emoji: "🎺", name: "Stabule", desc: "End-blown wooden flute", type: "flute" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin", type: "bow" }, { emoji: "🪗", name: "Accordion", desc: "In Latvian folk dances", type: "accordion" }] },
+  "Lebanon": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute central to Lebanese music", type: "pluck" }, { emoji: "🎵", name: "Buzuq", desc: "Long-necked lute", type: "pluck" }, { emoji: "🎺", name: "Mijwiz", desc: "Double-pipe clarinet", type: "reed" }, { emoji: "🥁", name: "Riq", desc: "Small tambourine", type: "drum" }] },
+  "Lesotho": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Lesiba", desc: "Wind-bowed instrument", type: "drone" }, { emoji: "🎵", name: "Thomo", desc: "Musical bow", type: "bow" }, { emoji: "🥁", name: "Moropa", desc: "Drum", type: "drum" }, { emoji: "🎺", name: "Sekhankula", desc: "Reed flute", type: "flute" }] },
+  "Liberia": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kpelle Harp", desc: "Bridge harp of the Kpelle people", type: "pluck" }, { emoji: "🥁", name: "Slit Drum", desc: "Log percussion", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Ivory flute", type: "flute" }, { emoji: "🪗", name: "Balafon", desc: "Wooden xylophone", type: "marimba" }] },
+  "Libya": { region: "North Africa", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Zokra", desc: "Bagpipe from North Africa", type: "reed" }, { emoji: "🎺", name: "Ghaita", desc: "Double-reed oboe", type: "reed" }, { emoji: "🥁", name: "Bendir", desc: "Frame drum", type: "drum" }] },
+  "Lithuania": { region: "Northern Europe", instruments: [{ emoji: "🎵", name: "Kankles", desc: "Lithuanian plucked zither", type: "pluck" }, { emoji: "🎺", name: "Daudytė", desc: "Wooden trumpet", type: "brass" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin", type: "bow" }, { emoji: "🥁", name: "Birbynė", desc: "Reed-pipe clarinet", type: "reed" }] },
+  "Luxembourg": { region: "Western Europe", instruments: [{ emoji: "🪗", name: "Accordion", desc: "In Luxembourgish folk music", type: "accordion" }, { emoji: "🎵", name: "Hackbrett", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin", type: "bow" }, { emoji: "🎺", name: "Flute", desc: "Folk flute", type: "flute" }] },
+  "Madagascar": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Valiha", desc: "Tube zither, national instrument", type: "pluck" }, { emoji: "🥁", name: "Hazolahy", desc: "Cylindrical drum", type: "drum" }, { emoji: "🎵", name: "Marovany", desc: "Box zither", type: "pluck" }, { emoji: "🎺", name: "Sodina", desc: "End-blown flute", type: "flute" }] },
+  "Malawi": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Bangwe", desc: "Board zither", type: "pluck" }, { emoji: "🥁", name: "Ngoma", desc: "Ceremonial drum", type: "drum" }, { emoji: "🎵", name: "Nsansi", desc: "Thumb piano", type: "mbira" }, { emoji: "🎺", name: "Flute", desc: "Reed flute", type: "flute" }] },
+  "Malaysia": { region: "Southeast Asia", instruments: [{ emoji: "🥁", name: "Kompang", desc: "Frame drum used at ceremonies", type: "drum" }, { emoji: "🎵", name: "Rebab", desc: "Bowed spike fiddle", type: "bow" }, { emoji: "🪗", name: "Gamelan", desc: "Malay gamelan ensemble", type: "bells" }, { emoji: "🎺", name: "Serunai", desc: "Double-reed oboe", type: "reed" }] },
+  "Maldives": { region: "South Asia", instruments: [{ emoji: "🥁", name: "Boduberu", desc: "Large drum for traditional dance", type: "drum" }, { emoji: "🎺", name: "Thaara", desc: "Frame drum", type: "drum" }, { emoji: "🪘", name: "Bodu Beru", desc: "Island ceremonial drum", type: "drum" }, { emoji: "🎵", name: "Odi", desc: "Traditional string instrument", type: "pluck" }] },
+  "Mali": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kora", desc: "21-stringed harp-lute of the Mandé", type: "pluck" }, { emoji: "🪗", name: "Balafon", desc: "Gourd-resonated xylophone", type: "marimba" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum, UNESCO heritage", type: "drum" }, { emoji: "🎵", name: "Ngoni", desc: "Ancestor of the banjo", type: "pluck" }] },
+  "Malta": { region: "Southern Europe", instruments: [{ emoji: "🎻", name: "Għana", desc: "Folk guitar for spontaneous singing", type: "guitar" }, { emoji: "🥁", name: "Tanbur", desc: "Drum", type: "drum" }, { emoji: "🪗", name: "Accordion", desc: "In Maltese folk music", type: "accordion" }, { emoji: "🎺", name: "Żaqq", desc: "Small Maltese bagpipe", type: "reed" }] },
+  "Mauritania": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Tidinit", desc: "4-stringed lute of Mauritanian griots", type: "pluck" }, { emoji: "🎵", name: "Ardin", desc: "Harp played by women", type: "pluck" }, { emoji: "🥁", name: "Tbal", desc: "Kettledrum", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }] },
+  "Mexico": { region: "Central America", instruments: [{ emoji: "🎸", name: "Guitarrón", desc: "Large acoustic bass guitar for mariachi", type: "guitar" }, { emoji: "🎻", name: "Vihuela", desc: "Small 5-stringed guitar for mariachi", type: "guitar" }, { emoji: "🪘", name: "Teponaztli", desc: "Ancient Aztec log drum", type: "drum" }, { emoji: "🎺", name: "Mariachi Trumpet", desc: "Bright brass in traditional ensembles", type: "brass" }] },
+  "Moldova": { region: "Eastern Europe", instruments: [{ emoji: "🎻", name: "Cobza", desc: "Short-necked plucked lute", type: "pluck" }, { emoji: "🎵", name: "Cimpoi", desc: "Moldovan bagpipe", type: "reed" }, { emoji: "🎻", name: "Nai", desc: "Pan flute", type: "panpipe" }, { emoji: "🥁", name: "Tobă", desc: "Drum", type: "drum" }] },
+  "Mongolia": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Morin Khuur", desc: "Horse-head fiddle, national instrument", type: "bow" }, { emoji: "🎺", name: "Tsuur", desc: "3-holed vertical flute", type: "flute" }, { emoji: "🥁", name: "Shaman Drum", desc: "Frame drum used in shamanic rituals", type: "drum" }, { emoji: "🎵", name: "Yatga", desc: "Horizontal plucked zither", type: "pluck" }] },
+  "Morocco": { region: "North Africa", instruments: [{ emoji: "🎵", name: "Oud", desc: "Pear-shaped fretless lute", type: "pluck" }, { emoji: "🥁", name: "Bendir", desc: "Frame drum with snare", type: "drum" }, { emoji: "🥁", name: "Guembri", desc: "3-stringed plucked lute of Gnawa", type: "pluck" }, { emoji: "🎺", name: "Ghaita", desc: "Double-reed oboe", type: "reed" }] },
+  "Mozambique": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Mbira", desc: "Thumb piano", type: "mbira" }, { emoji: "🥁", name: "Ngoma", desc: "Drum ensemble", type: "drum" }, { emoji: "🎵", name: "Xitende", desc: "Musical bow", type: "bow" }, { emoji: "🪗", name: "Timbila", desc: "Chopi xylophone, UNESCO heritage", type: "marimba" }] },
+  "Myanmar": { region: "Southeast Asia", instruments: [{ emoji: "🥁", name: "Pat Wain", desc: "Circular drum set of 21 drums", type: "drum" }, { emoji: "🎵", name: "Saung Gauk", desc: "Arched harp, national instrument", type: "pluck" }, { emoji: "🪗", name: "Pattala", desc: "Bamboo xylophone", type: "marimba" }, { emoji: "🎺", name: "Hnè", desc: "Double-reed oboe", type: "reed" }] },
+  "Namibia": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "//Kabba", desc: "Bow harp of the San people", type: "bow" }, { emoji: "🥁", name: "Ekipa", desc: "Oshiwambo drum", type: "drum" }, { emoji: "🎵", name: "Epara", desc: "Musical bow", type: "bow" }, { emoji: "🎺", name: "Flute", desc: "Reed flute", type: "flute" }] },
+  "Nepal": { region: "South Asia", instruments: [{ emoji: "🥁", name: "Madal", desc: "2-headed drum, national instrument", type: "drum" }, { emoji: "🎺", name: "Bansuri", desc: "Bamboo flute", type: "flute" }, { emoji: "🎵", name: "Sarangi", desc: "Bowed string instrument", type: "bow" }, { emoji: "🎺", name: "Dungchen", desc: "Long ceremonial trumpet", type: "brass" }] },
+  "Netherlands": { region: "Western Europe", instruments: [{ emoji: "🪗", name: "Draaiorgel", desc: "Mechanical barrel organ", type: "accordion" }, { emoji: "🎵", name: "Klompendans", desc: "Wooden clog for clog dancing", type: "perc" }, { emoji: "🎻", name: "Fiddle", desc: "Folk violin", type: "bow" }, { emoji: "🎺", name: "Hoorntje", desc: "Small cow horn", type: "brass" }] },
+  "New Zealand": { region: "Oceania", instruments: [{ emoji: "🎺", name: "Pūkāea", desc: "Long wooden Māori trumpet", type: "brass" }, { emoji: "🎵", name: "Pōi", desc: "Weighted balls on strings", type: "perc" }, { emoji: "🥁", name: "Pahu", desc: "Māori drum", type: "drum" }, { emoji: "🎺", name: "Nguru", desc: "Nose flute of the Māori", type: "flute" }] },
+  "Nicaragua": { region: "Central America", instruments: [{ emoji: "🪗", name: "Marimba", desc: "Wooden xylophone", type: "marimba" }, { emoji: "🎺", name: "Chirimía", desc: "Double-reed oboe", type: "reed" }, { emoji: "🥁", name: "Güiro", desc: "Serrated gourd scraper", type: "perc" }, { emoji: "🎺", name: "Flute", desc: "Ceramic flute", type: "flute" }] },
+  "Niger": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Molo", desc: "2-string lute of the Hausa", type: "pluck" }, { emoji: "🥁", name: "Kakaki", desc: "Long metal trumpet", type: "brass" }, { emoji: "🎵", name: "Goge", desc: "One-string fiddle", type: "bow" }, { emoji: "🥁", name: "Kuntigi", desc: "1-string plucked lute", type: "pluck" }] },
+  "Nigeria": { region: "West Africa", instruments: [{ emoji: "🥁", name: "Talking Drum", desc: "Hourglass pressure drum that mimics speech", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "21-stringed harp-lute", type: "pluck" }, { emoji: "🪘", name: "Udu", desc: "Clay pot percussion instrument", type: "drum" }, { emoji: "🎺", name: "Kakaki", desc: "Long royal trumpet", type: "brass" }] },
+  "North Korea": { region: "East Asia", instruments: [{ emoji: "🎵", name: "Haegeum", desc: "2-string vertical fiddle", type: "bow" }, { emoji: "🎵", name: "Gayageum", desc: "12-stringed zither", type: "pluck" }, { emoji: "🎺", name: "Daegeum", desc: "Large transverse bamboo flute", type: "flute" }, { emoji: "🥁", name: "Janggu", desc: "Hourglass drum", type: "drum" }] },
+  "North Macedonia": { region: "Southeast Europe", instruments: [{ emoji: "🎺", name: "Gaida", desc: "Macedonian bagpipe", type: "reed" }, { emoji: "🎵", name: "Tambura", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🥁", name: "Tapan", desc: "Double-headed drum", type: "drum" }, { emoji: "🎺", name: "Zurla", desc: "Double-reed wind instrument", type: "reed" }] },
+  "Norway": { region: "Northern Europe", instruments: [{ emoji: "🎻", name: "Hardanger Fiddle", desc: "Ornate violin with sympathetic strings", type: "bow" }, { emoji: "🎺", name: "Lur", desc: "Viking-era natural horn", type: "brass" }, { emoji: "🎵", name: "Langeleik", desc: "Norwegian zither", type: "pluck" }, { emoji: "🪗", name: "Trekkspill", desc: "Norwegian accordion", type: "accordion" }] },
+  "Oman": { region: "Middle East", instruments: [{ emoji: "🎺", name: "Rababa", desc: "Spike fiddle", type: "bow" }, { emoji: "🥁", name: "Mizan", desc: "Drum in leiwah music", type: "drum" }, { emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🎺", name: "Surnay", desc: "Double-reed wind", type: "reed" }] },
+  "Pakistan": { region: "South Asia", instruments: [{ emoji: "🥁", name: "Dhol", desc: "Double-headed barrel drum", type: "drum" }, { emoji: "🎵", name: "Sitar", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🎵", name: "Sarangi", desc: "Bowed short-necked instrument", type: "bow" }, { emoji: "🎺", name: "Bansuri", desc: "Bamboo flute", type: "flute" }] },
+  "Panama": { region: "Central America", instruments: [{ emoji: "🪗", name: "Mejoranera", desc: "5-stringed guitar for mejorana music", type: "guitar" }, { emoji: "🥁", name: "Caja", desc: "Small drum", type: "drum" }, { emoji: "🎺", name: "Bocona", desc: "Bass guitar-like instrument", type: "guitar" }, { emoji: "🪘", name: "Maracas", desc: "Gourd rattles", type: "perc" }] },
+  "Papua New Guinea": { region: "Oceania", instruments: [{ emoji: "🥁", name: "Kundu", desc: "Hourglass drum, national instrument", type: "drum" }, { emoji: "🎺", name: "Garamut", desc: "Slit drum for communication", type: "drum" }, { emoji: "🎵", name: "Nose Flute", desc: "Traditional blown flute", type: "flute" }, { emoji: "🪘", name: "Waistdrum", desc: "Portable drum worn at waist", type: "drum" }] },
+  "Paraguay": { region: "South America", instruments: [{ emoji: "🎸", name: "Paraguayan Harp", desc: "National instrument, diatonic harp", type: "pluck" }, { emoji: "🎸", name: "Guitar", desc: "Spanish-style guitar", type: "guitar" }, { emoji: "🥁", name: "Bombo", desc: "Bass drum", type: "drum" }, { emoji: "🎺", name: "Takuara", desc: "Guarani bamboo flute", type: "flute" }] },
+  "Peru": { region: "South America", instruments: [{ emoji: "🎺", name: "Quena", desc: "Andean notched end flute", type: "flute" }, { emoji: "🪘", name: "Cajón", desc: "Box-shaped percussion instrument", type: "drum" }, { emoji: "🎵", name: "Charango", desc: "Small 10-stringed Andean lute", type: "pluck" }, { emoji: "🎺", name: "Zampoña", desc: "Pan flute of the Andes", type: "panpipe" }] },
+  "Philippines": { region: "Southeast Asia", instruments: [{ emoji: "🪗", name: "Kulintang", desc: "Row of graduated brass gongs", type: "bells" }, { emoji: "🎵", name: "Kudyapi", desc: "2-stringed plucked lute", type: "pluck" }, { emoji: "🎺", name: "Bangsi", desc: "Bamboo flute", type: "flute" }, { emoji: "🥁", name: "Dabakan", desc: "Single-headed goblet drum", type: "drum" }] },
+  "Poland": { region: "Eastern Europe", instruments: [{ emoji: "🎻", name: "Suka Biłgorajska", desc: "Bowed instrument held upright", type: "bow" }, { emoji: "🪗", name: "Dudy", desc: "Polish bagpipe", type: "reed" }, { emoji: "🥁", name: "Bęben", desc: "Bass drum in folk bands", type: "drum" }, { emoji: "🎺", name: "Fujarka", desc: "Shepherd's flute", type: "flute" }] },
+  "Portugal": { region: "Western Europe", instruments: [{ emoji: "🎸", name: "Guitarra Portuguesa", desc: "12-stringed pear-shaped guitar for fado", type: "guitar" }, { emoji: "🎵", name: "Viola Baixo", desc: "Bass guitar in fado ensembles", type: "guitar" }, { emoji: "🪗", name: "Gaita de Foles", desc: "Galician/Portuguese bagpipe", type: "reed" }, { emoji: "🥁", name: "Adufe", desc: "Square frame drum", type: "drum" }] },
+  "Qatar": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Mirwas", desc: "Small hand drum in Leiwah", type: "drum" }, { emoji: "🎺", name: "Surnay", desc: "Double-reed wind", type: "reed" }, { emoji: "🎵", name: "Simsimiyya", desc: "5-string lyre", type: "pluck" }] },
+  "Romania": { region: "Southeast Europe", instruments: [{ emoji: "🎺", name: "Nai", desc: "Romanian pan flute", type: "panpipe" }, { emoji: "🎵", name: "Cimbalom", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎻", name: "Cobza", desc: "Short-necked lute", type: "pluck" }, { emoji: "🪗", name: "Cimpoi", desc: "Romanian bagpipe", type: "reed" }] },
+  "Russia": { region: "Eastern Europe", instruments: [{ emoji: "🎵", name: "Balalaika", desc: "Triangular 3-stringed plucked lute", type: "pluck" }, { emoji: "🪗", name: "Bayan", desc: "Russian button accordion", type: "accordion" }, { emoji: "🎺", name: "Gusli", desc: "Multi-stringed psaltery", type: "pluck" }, { emoji: "🪘", name: "Domra", desc: "Round-bodied plucked string instrument", type: "pluck" }] },
+  "Rwanda": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Inanga", desc: "Trough zither", type: "pluck" }, { emoji: "🥁", name: "Ingoma", desc: "Royal drum ensemble", type: "drum" }, { emoji: "🎵", name: "Ikembe", desc: "Thumb piano", type: "mbira" }, { emoji: "🎺", name: "Flute", desc: "Intore flute", type: "flute" }] },
+  "Saudi Arabia": { region: "Middle East", instruments: [{ emoji: "🥁", name: "Tabla", desc: "Frame drum in traditional music", type: "drum" }, { emoji: "🎵", name: "Oud", desc: "Classical Arabic lute", type: "pluck" }, { emoji: "🎺", name: "Mizmar", desc: "Double-reed wind instrument", type: "reed" }, { emoji: "🎵", name: "Rebab", desc: "Bowed spike fiddle", type: "bow" }] },
+  "Senegal": { region: "West Africa", instruments: [{ emoji: "🥁", name: "Sabar", desc: "Tall one-headed drum of the Wolof", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "21-string bridge harp", type: "pluck" }, { emoji: "🪗", name: "Balafon", desc: "Gourd-resonated xylophone", type: "marimba" }, { emoji: "🥁", name: "Tama", desc: "Talking drum", type: "drum" }] },
+  "Serbia": { region: "Southeast Europe", instruments: [{ emoji: "🎸", name: "Gusle", desc: "Single-stringed bowed epic instrument", type: "bow" }, { emoji: "🎺", name: "Frula", desc: "Short shepherd's flute", type: "flute" }, { emoji: "🎵", name: "Tamburica", desc: "Long-necked plucked lute", type: "pluck" }, { emoji: "🪗", name: "Gajde", desc: "Serbian bagpipe", type: "reed" }] },
+  "Sierra Leone": { region: "West Africa", instruments: [{ emoji: "🎵", name: "Kora", desc: "Harp-lute", type: "pluck" }, { emoji: "🥁", name: "Djembe", desc: "Goblet drum", type: "drum" }, { emoji: "🎵", name: "Sangban", desc: "Medium-sized drum", type: "drum" }, { emoji: "🪗", name: "Balafon", desc: "Wooden xylophone", type: "marimba" }] },
+  "Slovakia": { region: "Central Europe", instruments: [{ emoji: "🎺", name: "Fujara", desc: "Large shepherd's flute, UNESCO heritage", type: "flute" }, { emoji: "🪗", name: "Gajdy", desc: "Slovak bagpipe", type: "reed" }, { emoji: "🎵", name: "Cimbál", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎻", name: "Husle", desc: "Slovak folk violin", type: "bow" }] },
+  "Slovenia": { region: "Central Europe", instruments: [{ emoji: "🪗", name: "Diatonična Harmonika", desc: "Diatonic button accordion", type: "accordion" }, { emoji: "🎺", name: "Pastirska Piščal", desc: "Shepherd's flute", type: "flute" }, { emoji: "🥁", name: "Boben", desc: "Barrel drum", type: "drum" }, { emoji: "🎻", name: "Citre", desc: "Alpine zither", type: "pluck" }] },
+  "Somalia": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Kaban", desc: "Oud-like instrument", type: "pluck" }, { emoji: "🎺", name: "Soomaali Flute", desc: "Traditional flute", type: "flute" }, { emoji: "🥁", name: "Durbaan", desc: "Goatskin hand drum", type: "drum" }, { emoji: "🎵", name: "Shareero", desc: "Percussive rhythm stick", type: "perc" }] },
+  "South Africa": { region: "Southern Africa", instruments: [{ emoji: "🎸", name: "Umakhweyana", desc: "Musical bow played with mouth", type: "bow" }, { emoji: "🥁", name: "Djembe", desc: "Rope-tuned skin drum", type: "drum" }, { emoji: "🎵", name: "Mbira", desc: "Thumb piano of the Shona people", type: "mbira" }, { emoji: "🎺", name: "Vuvuzela", desc: "Plastic horn popular at events", type: "brass" }] },
+  "South Korea": { region: "East Asia", instruments: [{ emoji: "🥁", name: "Janggu", desc: "Hourglass-shaped two-headed drum", type: "drum" }, { emoji: "🎵", name: "Gayageum", desc: "12-stringed zither", type: "pluck" }, { emoji: "🎺", name: "Daegeum", desc: "Large bamboo transverse flute", type: "flute" }, { emoji: "🎻", name: "Haegeum", desc: "2-stringed vertical fiddle", type: "bow" }] },
+  "South Sudan": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Adungu", desc: "Arched harp", type: "pluck" }, { emoji: "🥁", name: "Nago", desc: "Log drum", type: "drum" }, { emoji: "🎺", name: "Alumiiu", desc: "End-blown flute", type: "flute" }, { emoji: "🪘", name: "Oporo", desc: "Cylindrical drum", type: "drum" }] },
+  "Spain": { region: "Southern Europe", instruments: [{ emoji: "🎸", name: "Flamenco Guitar", desc: "Percussive nylon-string classical guitar", type: "guitar" }, { emoji: "🪘", name: "Castanets", desc: "Hand-held wooden clappers for flamenco", type: "perc" }, { emoji: "🎵", name: "Bandurria", desc: "12-stringed plucked lute", type: "pluck" }, { emoji: "🎺", name: "Gaita", desc: "Galician bagpipe", type: "reed" }] },
+  "Sri Lanka": { region: "South Asia", instruments: [{ emoji: "🥁", name: "Kandyan Drum", desc: "Geta Bera, national ceremonial drum", type: "drum" }, { emoji: "🎺", name: "Horanewa", desc: "Double-reed oboe", type: "reed" }, { emoji: "🎵", name: "Rabana", desc: "Large frame drum", type: "drum" }, { emoji: "🎺", name: "Kombu", desc: "Curved bronze trumpet", type: "brass" }] },
+  "Sudan": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Tambur", desc: "Long-necked lute", type: "pluck" }, { emoji: "🥁", name: "Nagara", desc: "Kettledrum", type: "drum" }, { emoji: "🎺", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🪘", name: "Tum-Tum", desc: "Cylindrical drum", type: "drum" }] },
+  "Suriname": { region: "South America", instruments: [{ emoji: "🥁", name: "Apinti", desc: "Talking drum of the Maroon people", type: "drum" }, { emoji: "🎵", name: "Anke", desc: "Musical bow", type: "bow" }, { emoji: "🪘", name: "Seketi", desc: "Drum used in Winti ritual", type: "drum" }, { emoji: "🎺", name: "Flute", desc: "Bamboo flute", type: "flute" }] },
+  "Sweden": { region: "Northern Europe", instruments: [{ emoji: "🎻", name: "Nyckelharpa", desc: "Keyed fiddle, national instrument", type: "bow" }, { emoji: "🎻", name: "Hardanger Fiddle", desc: "Sympathetic-stringed fiddle", type: "bow" }, { emoji: "🎵", name: "Lur", desc: "Bronze age curved horn", type: "brass" }, { emoji: "🪗", name: "Dragspel", desc: "Swedish diatonic accordion", type: "accordion" }] },
+  "Switzerland": { region: "Central Europe", instruments: [{ emoji: "🎺", name: "Alphorn", desc: "Long natural horn, Alpine symbol", type: "brass" }, { emoji: "🎵", name: "Hackbrett", desc: "Swiss hammered dulcimer", type: "bells" }, { emoji: "🪗", name: "Diatonic Accordion", desc: "Used in Ländler folk dances", type: "accordion" }, { emoji: "🎻", name: "Fiddle", desc: "Alpine folk violin", type: "bow" }] },
+  "Syria": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🎺", name: "Nay", desc: "Reed flute", type: "flute" }, { emoji: "🥁", name: "Riq", desc: "Small tambourine", type: "drum" }, { emoji: "🎵", name: "Qanun", desc: "Plucked trapezoidal zither", type: "pluck" }] },
+  "Taiwan": { region: "East Asia", instruments: [{ emoji: "🎵", name: "Erhu", desc: "2-stringed bowed fiddle", type: "bow" }, { emoji: "🎵", name: "Guzheng", desc: "21-string zither", type: "pluck" }, { emoji: "🎺", name: "Dizi", desc: "Chinese bamboo flute", type: "flute" }, { emoji: "🥁", name: "Paigu", desc: "Set of tom-like drums", type: "drum" }] },
+  "Tajikistan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Rubab", desc: "Short-necked lute", type: "pluck" }, { emoji: "🎺", name: "Nay", desc: "Reed flute", type: "flute" }, { emoji: "🎵", name: "Dutar", desc: "Long-necked 2-string lute", type: "pluck" }, { emoji: "🥁", name: "Doira", desc: "Frame drum", type: "drum" }] },
+  "Tanzania": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Zeze", desc: "Spike fiddle", type: "bow" }, { emoji: "🥁", name: "Ngoma", desc: "Drum central to Swahili culture", type: "drum" }, { emoji: "🎵", name: "Marimba", desc: "Wooden xylophone", type: "marimba" }, { emoji: "🎺", name: "Bung'o", desc: "Ceremonial horn", type: "brass" }] },
+  "Thailand": { region: "Southeast Asia", instruments: [{ emoji: "🪗", name: "Ranat Ek", desc: "Thai xylophone", type: "marimba" }, { emoji: "🎵", name: "Khim", desc: "Hammered dulcimer", type: "bells" }, { emoji: "🎺", name: "Pi Nai", desc: "Double-reed oboe", type: "reed" }, { emoji: "🥁", name: "Thon", desc: "Goblet-shaped drum", type: "drum" }] },
+  "Timor-Leste": { region: "Southeast Asia", instruments: [{ emoji: "🎸", name: "Kakalo", desc: "Timorese guitar", type: "guitar" }, { emoji: "🥁", name: "Babadok", desc: "Frame drum", type: "drum" }, { emoji: "🎺", name: "Feku", desc: "Bamboo flute", type: "flute" }, { emoji: "🪘", name: "Besak", desc: "Large drum", type: "drum" }] },
+  "Togo": { region: "West Africa", instruments: [{ emoji: "🥁", name: "Atoke", desc: "Boat-shaped iron bell", type: "bells" }, { emoji: "🥁", name: "Kidi", desc: "Medium-sized drum", type: "drum" }, { emoji: "🎵", name: "Kora", desc: "Harp-lute", type: "pluck" }, { emoji: "🪗", name: "Balafon", desc: "Wooden xylophone", type: "marimba" }] },
+  "Trinidad and Tobago": { region: "Caribbean", instruments: [{ emoji: "🥁", name: "Steel Pan", desc: "National instrument, invented here", type: "bells" }, { emoji: "🥁", name: "Tassa Drum", desc: "Indo-Caribbean kettledrum", type: "drum" }, { emoji: "🪘", name: "Shak-Shak", desc: "Seed-filled gourd rattle", type: "perc" }, { emoji: "🎺", name: "Cuatro", desc: "4-stringed small guitar", type: "guitar" }] },
+  "Tunisia": { region: "North Africa", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Bendir", desc: "Frame drum", type: "drum" }, { emoji: "🎺", name: "Zukra", desc: "Tunisian bagpipe", type: "reed" }, { emoji: "🎵", name: "Mezoued", desc: "Double-pipe bagpipe", type: "reed" }] },
+  "Turkey": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Saz (Baglama)", desc: "Long-necked lute, national instrument", type: "pluck" }, { emoji: "🥁", name: "Davul", desc: "Large double-headed drum", type: "drum" }, { emoji: "🎺", name: "Zurna", desc: "High-pitched woodwind", type: "reed" }, { emoji: "🎵", name: "Ney", desc: "Reed flute in Ottoman classical music", type: "flute" }] },
+  "Turkmenistan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Dutar", desc: "2-stringed long-necked lute", type: "pluck" }, { emoji: "🎺", name: "Tuiduk", desc: "Double-reed wind instrument", type: "reed" }, { emoji: "🥁", name: "Nagara", desc: "Small kettledrum", type: "drum" }, { emoji: "🎵", name: "Gyjak", desc: "Bowed fiddle", type: "bow" }] },
+  "Uganda": { region: "East Africa", instruments: [{ emoji: "🎵", name: "Akogo", desc: "Thumb piano of the Iteso", type: "mbira" }, { emoji: "🥁", name: "Engoma", desc: "Royal drum ensemble", type: "drum" }, { emoji: "🎵", name: "Endongo", desc: "8-stringed bowl lyre", type: "pluck" }, { emoji: "🎺", name: "Endere", desc: "End-blown flute", type: "flute" }] },
+  "Ukraine": { region: "Eastern Europe", instruments: [{ emoji: "🎵", name: "Bandura", desc: "Multi-stringed plucked instrument", type: "pluck" }, { emoji: "🎺", name: "Trembita", desc: "Long wooden alpine horn", type: "brass" }, { emoji: "🎺", name: "Sopilka", desc: "Ukrainian flute", type: "flute" }, { emoji: "🥁", name: "Buben", desc: "Ukrainian tambourine", type: "drum" }] },
+  "United Arab Emirates": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🥁", name: "Tabla", desc: "Hand drum", type: "drum" }, { emoji: "🎺", name: "Surnay", desc: "Double-reed oboe", type: "reed" }, { emoji: "🎵", name: "Simsimiyya", desc: "5-string lyre", type: "pluck" }] },
+  "United Kingdom": { region: "Northern Europe", instruments: [{ emoji: "🎺", name: "Bagpipes", desc: "Highland and Lowland Scottish pipes", type: "reed" }, { emoji: "🪘", name: "Bodhrán", desc: "Irish frame drum", type: "drum" }, { emoji: "🎻", name: "Fiddle", desc: "Celtic folk violin", type: "bow" }, { emoji: "🎺", name: "Brass Band", desc: "Yorkshire and Welsh colliery band tradition", type: "brass" }] },
+  "United States of America": { region: "North America", instruments: [{ emoji: "🎸", name: "Banjo", desc: "5-stringed plucked instrument", type: "guitar" }, { emoji: "🎸", name: "Steel Guitar", desc: "Lap or pedal steel guitar", type: "guitar" }, { emoji: "🪗", name: "Appalachian Dulcimer", desc: "Mountain folk zither", type: "pluck" }, { emoji: "🎺", name: "Trumpet (Jazz)", desc: "Key instrument of American jazz", type: "brass" }] },
+  "Uruguay": { region: "South America", instruments: [{ emoji: "🥁", name: "Candombe Drum", desc: "Set of 3 Afro-Uruguayan drums, UNESCO heritage", type: "drum" }, { emoji: "🪗", name: "Bandoneón", desc: "Tango accordion", type: "accordion" }, { emoji: "🎸", name: "Guitar", desc: "In milonga and payada folk music", type: "guitar" }, { emoji: "🎺", name: "Cuatro", desc: "Small 4-stringed guitar", type: "guitar" }] },
+  "Uzbekistan": { region: "Central Asia", instruments: [{ emoji: "🎵", name: "Dutar", desc: "2-stringed long-necked lute", type: "pluck" }, { emoji: "🎵", name: "Rubab", desc: "Short-necked plucked lute", type: "pluck" }, { emoji: "🥁", name: "Doira", desc: "Frame drum", type: "drum" }, { emoji: "🎺", name: "Nay", desc: "Reed flute", type: "flute" }] },
+  "Venezuela": { region: "South America", instruments: [{ emoji: "🎸", name: "Cuatro", desc: "4-stringed national guitar", type: "guitar" }, { emoji: "🪘", name: "Maracas", desc: "Gourd rattles, national symbol", type: "perc" }, { emoji: "🥁", name: "Tambor", desc: "African-origin drum in joropo", type: "drum" }, { emoji: "🎵", name: "Arpa Llanera", desc: "Plains harp, icon of joropo music", type: "pluck" }] },
+  "Vietnam": { region: "Southeast Asia", instruments: [{ emoji: "🎵", name: "Đàn bầu", desc: "Single-string zither with whammy bar", type: "pluck" }, { emoji: "🎵", name: "Đàn tranh", desc: "16-string zither", type: "pluck" }, { emoji: "🎺", name: "Sáo trúc", desc: "Bamboo transverse flute", type: "flute" }, { emoji: "🥁", name: "Trống cơm", desc: "Double-headed cooked-rice drum", type: "drum" }] },
+  "Yemen": { region: "Middle East", instruments: [{ emoji: "🎵", name: "Oud", desc: "Arabic lute", type: "pluck" }, { emoji: "🎺", name: "Mizmar", desc: "Wooden double-reed instrument", type: "reed" }, { emoji: "🥁", name: "Marfa", desc: "Large cylindrical drum", type: "drum" }, { emoji: "🎵", name: "Simsimiyya", desc: "5-stringed lyre of Red Sea coast", type: "pluck" }] },
+  "Zambia": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Silimba", desc: "Xylophone-like instrument", type: "marimba" }, { emoji: "🥁", name: "Ngoma", desc: "Drum", type: "drum" }, { emoji: "🎵", name: "Kalimba", desc: "Thumb piano", type: "mbira" }, { emoji: "🎺", name: "Chipendani", desc: "Musical bow", type: "bow" }] },
+  "Zimbabwe": { region: "Southern Africa", instruments: [{ emoji: "🎵", name: "Mbira Dzavadzimu", desc: "Spirit voice thumb piano, UNESCO heritage", type: "mbira" }, { emoji: "🪗", name: "Marimba", desc: "Wooden xylophone", type: "marimba" }, { emoji: "🥁", name: "Ngoma", desc: "Drum", type: "drum" }, { emoji: "🎺", name: "Chipendani", desc: "Mouth bow", type: "bow" }] },
+};
+
+// ──────────────────────────────────────────────
+// WEB AUDIO ENGINE
+// ──────────────────────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let currentNode = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+const soundProfiles = {
+  pluck:     { type: 'pluck',     freq: 220, decay: 1.2 },
+  bow:       { type: 'bow',       freq: 196, decay: 1.8 },
+  flute:     { type: 'flute',     freq: 523, decay: 1.5 },
+  drum:      { type: 'drum',      freq:  80, decay: 0.7 },
+  reed:      { type: 'reed',      freq: 311, decay: 1.6 },
+  accordion: { type: 'accordion', freq: 349, decay: 1.4 },
+  guitar:    { type: 'guitar',    freq: 196, decay: 1.3 },
+  brass:     { type: 'brass',     freq: 174, decay: 1.8 },
+  bells:     { type: 'bells',     freq: 784, decay: 2.5 },
+  mbira:     { type: 'mbira',     freq: 440, decay: 2.0 },
+  drone:     { type: 'drone',     freq:  73, decay: 2.2 },
+  panpipe:   { type: 'panpipe',   freq: 587, decay: 1.6 },
+  marimba:   { type: 'marimba',   freq: 659, decay: 1.1 },
+  perc:      { type: 'perc',      freq: 200, decay: 0.4 },
+};
+
+function synthSound(profile, durationSec = 2.5) {
+  const ctx = getAudioCtx();
+  const t = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, t);
+  master.gain.exponentialRampToValueAtTime(0.35, t + 0.05);
+  master.gain.exponentialRampToValueAtTime(0.0001, t + durationSec);
+  master.connect(ctx.destination);
+
+  const f = profile.freq;
+
+  if (profile.type === 'drum' || profile.type === 'perc') {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.07));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filt = ctx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = f; filt.Q.value = 0.7;
+    src.connect(filt); filt.connect(master);
+    src.start(t); src.stop(t + durationSec);
+    return [src, master];
+  }
+
+  if (profile.type === 'bells' || profile.type === 'mbira' || profile.type === 'marimba') {
+    const freqs = [f, f * 2.76, f * 5.4];
+    const nodes = freqs.map((fr, i) => {
+      const o = ctx.createOscillator(); o.frequency.value = fr;
+      const g = ctx.createGain(); const decayTime = durationSec / (i + 1);
+      g.gain.setValueAtTime(0.15 / (i + 1), t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decayTime);
+      o.connect(g); g.connect(master);
+      o.start(t); o.stop(t + durationSec);
+      return o;
+    });
+    return [nodes[0], master];
+  }
+
+  if (profile.type === 'pluck' || profile.type === 'guitar') {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth'; osc.frequency.value = f;
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(2000, t);
+    filt.frequency.exponentialRampToValueAtTime(400, t + durationSec);
+    osc.connect(filt); filt.connect(master);
+    osc.start(t); osc.stop(t + durationSec);
+    return [osc, master];
+  }
+
+  if (profile.type === 'bow') {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = f;
+    const vib = ctx.createOscillator(); vib.frequency.value = 5.5;
+    const vibGain = ctx.createGain(); vibGain.gain.value = 3;
+    vib.connect(vibGain); vibGain.connect(osc.frequency);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 1200;
+    osc.connect(filt); filt.connect(master);
+    osc.start(t); vib.start(t); osc.stop(t + durationSec); vib.stop(t + durationSec);
+    return [osc, master];
+  }
+
+  if (profile.type === 'flute' || profile.type === 'panpipe') {
+    const osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = f;
+    const osc2 = ctx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = f * 2.01;
+    const g2 = ctx.createGain(); g2.gain.value = 0.15;
+    const noise = ctx.createBuffer(1, ctx.sampleRate * durationSec, ctx.sampleRate);
+    const nd = noise.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const ns = ctx.createBufferSource(); ns.buffer = noise;
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = f * 6; nf.Q.value = 10;
+    const ng = ctx.createGain(); ng.gain.value = 0.05;
+    ns.connect(nf); nf.connect(ng); ng.connect(master);
+    osc.connect(master); osc2.connect(g2); g2.connect(master);
+    osc.start(t); osc2.start(t); ns.start(t);
+    osc.stop(t + durationSec); osc2.stop(t + durationSec); ns.stop(t + durationSec);
+    return [osc, master];
+  }
+
+  if (profile.type === 'reed') {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = f;
+    const osc2 = ctx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = f * 0.5;
+    const g2 = ctx.createGain(); g2.gain.value = 0.3;
+    const filt = ctx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = f * 2; filt.Q.value = 2;
+    osc.connect(filt); osc2.connect(g2); g2.connect(filt); filt.connect(master);
+    osc.start(t); osc2.start(t); osc.stop(t + durationSec); osc2.stop(t + durationSec);
+    return [osc, master];
+  }
+
+  if (profile.type === 'accordion') {
+    const freqs = [f, f * 1.005, f * 1.5];
+    const oscs = freqs.map(fr => { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; return o; });
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 1500;
+    oscs.forEach(o => { o.connect(filt); o.start(t); o.stop(t + durationSec); });
+    filt.connect(master);
+    return [oscs[0], master];
+  }
+
+  if (profile.type === 'brass') {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = f;
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(300, t);
+    filt.frequency.exponentialRampToValueAtTime(3000, t + 0.1);
+    filt.frequency.exponentialRampToValueAtTime(1000, t + durationSec);
+    osc.connect(filt); filt.connect(master);
+    osc.start(t); osc.stop(t + durationSec);
+    return [osc, master];
+  }
+
+  if (profile.type === 'drone') {
+    const freqs = [f, f * 1.5, f * 2, f * 3];
+    const oscs = freqs.map((fr, i) => {
+      const o = ctx.createOscillator();
+      o.type = i === 0 ? 'sawtooth' : 'sine'; o.frequency.value = fr;
+      const g = ctx.createGain(); g.gain.value = 0.2 / (i + 1);
+      o.connect(g); g.connect(master); o.start(t); o.stop(t + durationSec); return o;
+    });
+    return [oscs[0], master];
+  }
+
+  // fallback
+  const osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = f;
+  osc.connect(master); osc.start(t); osc.stop(t + durationSec);
+  return [osc, master];
+}
+
+function renderToBuffer(profile, durationSec = 2.5) {
+  const sampleRate = 44100;
+  const frameCount = Math.ceil(sampleRate * durationSec);
+  const offCtx = new OfflineAudioContext(1, frameCount, sampleRate);
+  const t = 0;
+  const master = offCtx.createGain();
+  master.gain.setValueAtTime(0.0001, t);
+  master.gain.exponentialRampToValueAtTime(0.5, t + 0.05);
+  master.gain.exponentialRampToValueAtTime(0.0001, t + durationSec - 0.05);
+  master.connect(offCtx.destination);
+
+  const f = profile.freq;
+
+  function addOsc(ctx, type, freq, gainVal, start, stop) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.value = gainVal;
+    o.connect(g); g.connect(master); o.start(start); o.stop(stop);
+  }
+
+  if (profile.type === 'drum' || profile.type === 'perc') {
+    const buf = offCtx.createBuffer(1, sampleRate * 0.5, sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (sampleRate * 0.07));
+    const src = offCtx.createBufferSource(); src.buffer = buf;
+    const filt = offCtx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = f; filt.Q.value = 0.7;
+    src.connect(filt); filt.connect(master); src.start(0);
+  } else if (profile.type === 'bells' || profile.type === 'mbira' || profile.type === 'marimba') {
+    [f, f * 2.76, f * 5.4].forEach((fr, i) => {
+      addOsc(offCtx, 'sine', fr, 0.2 / (i + 1), 0, durationSec / (i + 1));
+    });
+  } else if (profile.type === 'pluck' || profile.type === 'guitar') {
+    addOsc(offCtx, 'sawtooth', f, 0.3, 0, durationSec);
+    const filt = offCtx.createBiquadFilter(); // simpler: just add direct
+  } else if (profile.type === 'flute' || profile.type === 'panpipe') {
+    addOsc(offCtx, 'sine', f, 0.4, 0, durationSec);
+    addOsc(offCtx, 'sine', f * 2, 0.1, 0, durationSec);
+  } else if (profile.type === 'bow') {
+    addOsc(offCtx, 'sawtooth', f, 0.25, 0, durationSec);
+    addOsc(offCtx, 'sine', f * 2, 0.1, 0, durationSec);
+  } else if (profile.type === 'reed') {
+    addOsc(offCtx, 'sawtooth', f, 0.2, 0, durationSec);
+    addOsc(offCtx, 'square', f * 0.5, 0.1, 0, durationSec);
+  } else if (profile.type === 'accordion') {
+    addOsc(offCtx, 'sawtooth', f, 0.2, 0, durationSec);
+    addOsc(offCtx, 'sawtooth', f * 1.5, 0.1, 0, durationSec);
+  } else if (profile.type === 'brass') {
+    addOsc(offCtx, 'sawtooth', f, 0.3, 0, durationSec);
+    addOsc(offCtx, 'sine', f * 2, 0.1, 0, durationSec);
+  } else if (profile.type === 'drone') {
+    [f, f * 1.5, f * 2].forEach((fr, i) => addOsc(offCtx, 'sine', fr, 0.2 / (i + 1), 0, durationSec));
+  } else {
+    addOsc(offCtx, 'sine', f, 0.4, 0, durationSec);
+  }
+
+  return offCtx.startRendering();
+}
+
+function audioBufferToWav(buffer) {
+  const numChannels = 1, sampleRate = buffer.sampleRate;
+  const data = buffer.getChannelData(0);
+  const len = data.length;
+  const ab = new ArrayBuffer(44 + len * 2);
+  const view = new DataView(ab);
+  function writeStr(o, s) { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); }
+  writeStr(0,'RIFF'); view.setUint32(4, 36 + len*2, true);
+  writeStr(8,'WAVE'); writeStr(12,'fmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36,'data'); view.setUint32(40, len*2, true);
+  for (let i = 0; i < len; i++) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(44 + i*2, s < 0 ? s*0x8000 : s*0x7FFF, true);
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+async function downloadSample(instName, type) {
+  const profile = soundProfiles[type] || soundProfiles.pluck;
+  const buffer = await renderToBuffer(profile, 3);
+  const wav = audioBufferToWav(buffer);
+  const url = URL.createObjectURL(wav);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${instName.replace(/[^a-z0-9]/gi,'_').toLowerCase()}_sample.wav`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+}
+
+// Expose to ES module scope
+window.soundProfiles = soundProfiles;
+window.renderToBuffer = renderToBuffer;
+window.audioBufferToWav = audioBufferToWav;
+
+const API_BASE = 'http://localhost:8000';
+let currentAudio = null;
+let playingBtn = null;
+
+function stopCurrent() {
+  if (playingBtn) { playingBtn.classList.remove('playing'); playingBtn.textContent = '▶'; playingBtn = null; }
+  if (currentNode) { try { currentNode.stop(); } catch(e) {} currentNode = null; }
+  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; currentAudio = null; }
+}
+
+async function playInstrument(btn, type, audioKey) {
+  stopCurrent();
+  playingBtn = btn;
+  btn.classList.add('playing'); btn.textContent = '■';
+
+  // Try real audio from backend first
+  if (audioKey) {
+    try {
+      const res = await fetch(`${API_BASE}/audio/${audioKey}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          const audio = new Audio(data.url);
+          audio.crossOrigin = 'anonymous';
+          currentAudio = audio;
+          audio.play();
+          audio.onended = () => { btn.classList.remove('playing'); btn.textContent = '▶'; playingBtn = null; currentAudio = null; };
+          audio.onerror = () => fallbackSynth(btn, type); // backend had URL but file failed — fall back
+          return;
+        }
+      }
+    } catch(e) { /* backend not running — fall back to synth */ }
+  }
+
+  fallbackSynth(btn, type);
+}
+
+function fallbackSynth(btn, type) {
+  if (btn !== playingBtn) return; // user already clicked something else
+  const profile = soundProfiles[type] || soundProfiles.pluck;
+  const [node] = synthSound(profile, 2.5);
+  currentNode = node;
+  setTimeout(() => { if (btn === playingBtn) { btn.classList.remove('playing'); btn.textContent = '▶'; playingBtn = null; } }, 2600);
+}
+
+// ──────────────────────────────────────────────
+// PANEL
+// ──────────────────────────────────────────────
+let selectedCountry = null;
+
+function showPanel(name) {
+  selectedCountry = name;
+  const data = instruments[name];
+  const panel = document.getElementById('panel');
+  if (!data) {
+    panel.innerHTML = `<div class="no-data">🎵 No instrument data for <strong style="color:var(--cream)">${name}</strong> yet — contributions welcome!</div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="country-header">
+      <span class="country-name">${name}</span>
+      <span class="country-region">${data.region}</span>
+    </div>
+    <div id="instruments-grid">
+      ${data.instruments.map((inst, idx) => {
+        const profile = soundProfiles[inst.type] || soundProfiles.pluck;
+        return `
+        <div class="inst-card">
+          <div class="inst-top">
+            <span class="inst-emoji">${inst.emoji}</span>
+            <button class="inst-play-btn" id="play-${idx}" onclick="playInstrument(this, '${inst.type}', '${inst.name.toLowerCase().replace(/[^a-z0-9]/g, "_").replace(/_{2,}/g, "_").replace(/^_|_$/g, "")}')" title="Play audio sample">▶</button>
+          </div>
+          <div class="inst-name">${inst.name}</div>
+          <div class="inst-desc">${inst.desc}</div>
+          <button class="inst-dl-btn" onclick="downloadSample('${inst.name.replace(/'/g,"\\'")}', '${inst.type}')">⬇ Download WAV</button>
+          <button class="inst-at-btn" onclick="audiotoolSendSample(this, '${inst.name.replace(/'/g,"\\'")  }', '${inst.type}')" title="Upload sample to Audiotool DAW">🎹 Use as Instrument</button>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ──────────────────────────────────────────────
+// FLAT MAP (D3)
+// ──────────────────────────────────────────────
+let d3selected = null;
+
+async function loadFlatMap() {
+  try {
+    const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    const world = await res.json();
+    const countries = topojson.feature(world, world.objects.countries);
+    const nameRes = await fetch('https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json');
+    let nameMap = {};
+    if (nameRes.ok) {
+      const nd = await nameRes.json();
+      nd.forEach(c => { nameMap[c['country-code']] = c.name; });
+    }
+    const svg = d3.select('#worldmap');
+    const proj = d3.geoNaturalEarth1().scale(153).translate([490, 245]);
+    const path = d3.geoPath().projection(proj);
+    svg.selectAll('path').data(countries.features).enter().append('path')
+      .attr('d', path)
+      .attr('data-id', d => d.id)
+      .on('click', function(event, d) {
+        const id = String(d.id).padStart(3,'0');
+        const name = nameMap[id] || d.properties?.name || 'Unknown';
+        if (d3selected) d3.select(d3selected).classed('active', false);
+        d3.select(this).classed('active', true);
+        d3selected = this;
+        showPanel(name);
+      })
+      .append('title').text(d => { const id = String(d.id).padStart(3,'0'); return nameMap[id] || ''; });
+    const covered = Object.keys(instruments).length;
+    document.getElementById('country-count').textContent = `${covered} countries with data`;
+  } catch(e) {
+    document.getElementById('worldmap').innerHTML = `<text x="500" y="250" text-anchor="middle" fill="#8fa8c0" font-size="14">Map loading failed. Please refresh.</text>`;
+  }
+}
+
+// ──────────────────────────────────────────────
+// 3D GLOBE (Three.js)
+// ──────────────────────────────────────────────
+let globeRenderer, globeScene, globeCamera, globeRaycaster, globeMouse;
+let globeCountryMeshes = [], globeNameMap = {}, globeData = null;
+let isDragging = false, prevMouse = {x: 0, y: 0};
+let globeRotation = {x: 0.2, y: 0}, targetRotation = {x: 0.2, y: 0};
+let globeSelectedMesh = null;
+let globeHoverMesh = null;
+let globeAnimFrame = null;
+
+async function initGlobe() {
+  const canvas = document.getElementById('globe-canvas');
+  const container = document.getElementById('globe-view');
+  const W = container.clientWidth;
+  const H = Math.min(W * 0.55, 500);
+  canvas.width = W; canvas.height = H;
+
+  globeRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  globeRenderer.setPixelRatio(window.devicePixelRatio);
+  globeRenderer.setSize(W, H);
+  globeRenderer.setClearColor(0x000000, 0);
+
+  globeScene = new THREE.Scene();
+  globeCamera = new THREE.PerspectiveCamera(45, W/H, 0.1, 100);
+  globeCamera.position.z = 2.4;
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0x334466, 1.2);
+  globeScene.add(ambient);
+  const sunLight = new THREE.DirectionalLight(0xffd080, 1.8);
+  sunLight.position.set(5, 3, 5);
+  globeScene.add(sunLight);
+  const rimLight = new THREE.DirectionalLight(0x1a3a8a, 0.8);
+  rimLight.position.set(-4, -2, -4);
+  globeScene.add(rimLight);
+
+  // Ocean sphere
+  const oceanGeo = new THREE.SphereGeometry(1.0, 64, 64);
+  const oceanMat = new THREE.MeshPhongMaterial({ color: 0x0d2a4a, shininess: 80, specular: 0x112244 });
+  globeScene.add(new THREE.Mesh(oceanGeo, oceanMat));
+
+  // Atmosphere glow
+  const atmoGeo = new THREE.SphereGeometry(1.05, 32, 32);
+  const atmoMat = new THREE.MeshBasicMaterial({ color: 0x1a5080, transparent: true, opacity: 0.08, side: THREE.BackSide });
+  globeScene.add(new THREE.Mesh(atmoGeo, atmoMat));
+
+  globeRaycaster = new THREE.Raycaster();
+  globeMouse = new THREE.Vector2();
+
+  // Load map data
+  try {
+    const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    globeData = await res.json();
+    const nameRes = await fetch('https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json');
+    if (nameRes.ok) {
+      const nd = await nameRes.json();
+      nd.forEach(c => { globeNameMap[c['country-code']] = c.name; });
+    }
+    buildGlobeCountries();
+  } catch(e) { console.error('Globe data load failed', e); }
+
+  // Events
+  canvas.addEventListener('mousedown', onGlobeMouseDown);
+  canvas.addEventListener('mousemove', onGlobeMouseMove);
+  canvas.addEventListener('mouseup', onGlobeMouseUp);
+  canvas.addEventListener('mouseleave', onGlobeMouseUp);
+  canvas.addEventListener('wheel', onGlobeWheel, { passive: true });
+  canvas.addEventListener('click', onGlobeClick);
+  canvas.addEventListener('touchstart', onGlobeTouchStart, { passive: true });
+  canvas.addEventListener('touchmove', onGlobeTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onGlobeTouchEnd);
+
+  animateGlobe();
+}
+
+function latLonToXYZ(lat, lon, r) {
+  const phi = (90 - lat) * Math.PI / 180;
+  const theta = (lon + 180) * Math.PI / 180;
+  return new THREE.Vector3(
+    -r * Math.sin(phi) * Math.cos(theta),
+     r * Math.cos(phi),
+     r * Math.sin(phi) * Math.sin(theta)
+  );
+}
+
+function buildGlobeCountries() {
+  const countryFeatures = topojson.feature(globeData, globeData.objects.countries).features;
+  const defaultMat = new THREE.MeshPhongMaterial({ color: 0x1a3a5c, shininess: 20, specular: 0x112233 });
+  const hasDataMat = new THREE.MeshPhongMaterial({ color: 0x1e4a6e, shininess: 25, specular: 0x113344 });
+  const RADIUS = 1.001;
+
+  countryFeatures.forEach(feature => {
+    const id = String(feature.id).padStart(3,'0');
+    const name = globeNameMap[id] || '';
+    const hasData = !!instruments[name];
+    const geo = buildCountryGeometry(feature, RADIUS);
+    if (!geo) return;
+    const mat = (hasData ? hasDataMat : defaultMat).clone();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData = { name, id };
+    globeScene.add(mesh);
+    globeCountryMeshes.push(mesh);
+  });
+}
+
+function buildCountryGeometry(feature, radius) {
+  const positions = [], indices = [];
+  let idx = 0;
+
+  function processCoords(coords) {
+    const pts = coords.map(([lon, lat]) => latLonToXYZ(lat, lon, radius));
+    if (pts.length < 3) return;
+    const center = pts.reduce((a, p) => a.clone().add(p), new THREE.Vector3()).divideScalar(pts.length);
+    center.normalize().multiplyScalar(radius);
+    const ci = idx++;
+    positions.push(center.x, center.y, center.z);
+    pts.forEach(p => { positions.push(p.x, p.y, p.z); idx++; });
+    for (let i = 1; i < pts.length; i++) {
+      indices.push(ci, ci + i, i < pts.length - 1 ? ci + i + 1 : ci + 1);
+    }
+  }
+
+  try {
+    const geom = feature.geometry;
+    if (!geom) return null;
+    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+    polys.forEach(poly => poly.forEach(ring => processCoords(ring)));
+  } catch(e) { return null; }
+
+  if (positions.length === 0) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  try { geo.computeVertexNormals(); } catch(e) {}
+  return geo;
+}
+
+let globeZoom = 2.4;
+function onGlobeWheel(e) {
+  globeZoom = Math.max(1.4, Math.min(4.5, globeZoom + e.deltaY * 0.003));
+  globeCamera.position.z = globeZoom;
+}
+
+function onGlobeMouseDown(e) { isDragging = false; prevMouse = {x: e.clientX, y: e.clientY}; }
+function onGlobeMouseMove(e) {
+  const dx = e.clientX - prevMouse.x, dy = e.clientY - prevMouse.y;
+  if (e.buttons === 1 && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
+    isDragging = true;
+    targetRotation.y += dx * 0.005; targetRotation.x += dy * 0.005;
+    targetRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotation.x));
+    prevMouse = {x: e.clientX, y: e.clientY};
+  }
+  updateHover(e);
+}
+function onGlobeMouseUp() { isDragging = false; }
+
+let touchStart = null;
+function onGlobeTouchStart(e) { touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY}; isDragging = false; }
+function onGlobeTouchMove(e) {
+  if (!touchStart) return;
+  e.preventDefault();
+  const dx = e.touches[0].clientX - touchStart.x, dy = e.touches[0].clientY - touchStart.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { isDragging = true; }
+  targetRotation.y += dx * 0.005; targetRotation.x += dy * 0.005;
+  targetRotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotation.x));
+  touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+}
+function onGlobeTouchEnd(e) {
+  if (!isDragging && e.changedTouches.length) onGlobeClickAt(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+  isDragging = false; touchStart = null;
+}
+function onGlobeClick(e) { if (!isDragging) onGlobeClickAt(e.clientX, e.clientY); }
+
+function getNDC(clientX, clientY) {
+  const canvas = document.getElementById('globe-canvas');
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * 2 - 1,
+    y: -((clientY - rect.top) / rect.height) * 2 + 1
+  };
+}
+
+function updateHover(e) {
+  const ndc = getNDC(e.clientX, e.clientY);
+  globeMouse.set(ndc.x, ndc.y);
+  globeRaycaster.setFromCamera(globeMouse, globeCamera);
+  const hits = globeRaycaster.intersectObjects(globeCountryMeshes);
+  if (globeHoverMesh && globeHoverMesh !== globeSelectedMesh) {
+    globeHoverMesh.material.color.setHex(0x1a3a5c);
+  }
+  if (hits.length) {
+    const m = hits[0].object;
+    if (m !== globeSelectedMesh) { m.material.color.setHex(0xc47d3a); }
+    globeHoverMesh = m;
+    document.getElementById('globe-canvas').style.cursor = 'pointer';
+  } else {
+    globeHoverMesh = null;
+    document.getElementById('globe-canvas').style.cursor = 'grab';
+  }
+}
+
+function onGlobeClickAt(clientX, clientY) {
+  const ndc = getNDC(clientX, clientY);
+  globeMouse.set(ndc.x, ndc.y);
+  globeRaycaster.setFromCamera(globeMouse, globeCamera);
+  const hits = globeRaycaster.intersectObjects(globeCountryMeshes);
+  if (hits.length) {
+    const m = hits[0].object;
+    if (globeSelectedMesh && globeSelectedMesh !== m) globeSelectedMesh.material.color.setHex(0x1a3a5c);
+    m.material.color.setHex(0xe8a030);
+    globeSelectedMesh = m;
+    showPanel(m.userData.name || 'Unknown');
+  }
+}
+
+function animateGlobe() {
+  globeAnimFrame = requestAnimationFrame(animateGlobe);
+  globeRotation.x += (targetRotation.x - globeRotation.x) * 0.1;
+  globeRotation.y += (targetRotation.y - globeRotation.y) * 0.1;
+  if (!isDragging) targetRotation.y += 0.001;
+  const pivot = new THREE.Group();
+  globeScene.rotation.x = globeRotation.x;
+  globeScene.rotation.y = globeRotation.y;
+  globeRenderer.render(globeScene, globeCamera);
+}
+
+// ──────────────────────────────────────────────
+// VIEW TOGGLE
+// ──────────────────────────────────────────────
+let globeInited = false;
+function setView(v) {
+  const flat = document.getElementById('flat-view');
+  const globe = document.getElementById('globe-view');
+  document.getElementById('btn-flat').classList.toggle('active', v === 'flat');
+  document.getElementById('btn-globe').classList.toggle('active', v === 'globe');
+  if (v === 'flat') {
+    flat.style.display = 'block'; globe.style.display = 'none';
+    if (globeAnimFrame) cancelAnimationFrame(globeAnimFrame);
+  } else {
+    flat.style.display = 'none'; globe.style.display = 'block';
+    if (!globeInited) { initGlobe(); globeInited = true; }
+    else { animateGlobe(); }
+    setTimeout(() => {
+      const canvas = document.getElementById('globe-canvas');
+      const container = document.getElementById('globe-view');
+      const W = container.clientWidth, H = Math.min(W * 0.55, 500);
+      canvas.width = W; canvas.height = H;
+      if (globeRenderer) { globeRenderer.setSize(W, H); globeCamera.aspect = W/H; globeCamera.updateProjectionMatrix(); }
+    }, 50);
+  }
+}
+
+// Init flat map on load
+loadFlatMap();
+</script>
+
+<!-- Audiotool Nexus integration (ES module) -->
+<script type="module">
+// ──────────────────────────────────────────────────────────────────────────
+// AUDIOTOOL INTEGRATION
+// Uses @audiotool/nexus from esm.sh CDN
+// Flow: generate WAV → authenticate → upload sample → insert into project
+// ──────────────────────────────────────────────────────────────────────────
+
+const AT_STORAGE_KEY = 'worldinstr_audiotool_config';
+
+// ── Config helpers ──────────────────────────────────────────────────────────
+function loadATConfig() {
+  try { return JSON.parse(localStorage.getItem(AT_STORAGE_KEY) || 'null'); } catch { return null; }
+}
+function saveATConfigToStorage(cfg) {
+  localStorage.setItem(AT_STORAGE_KEY, JSON.stringify(cfg));
+}
+
+// ── Toast system ────────────────────────────────────────────────────────────
+function atToast(msg, type = 'info', duration = 4000) {
+  const container = document.getElementById('at-toast');
+  const el = document.createElement('div');
+  el.className = `at-toast-item ${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), duration);
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+window.openATModal = function() {
+  const cfg = loadATConfig();
+  if (cfg) {
+    document.getElementById('at-client-id').value = cfg.clientId || '';
+    document.getElementById('at-project-url').value = cfg.projectUrl || '';
+    document.getElementById('at-redirect-url').value = cfg.redirectUrl || 'http://127.0.0.1:5500/';
+  }
+  document.getElementById('at-modal').classList.add('open');
+};
+
+window.closeATModal = function() {
+  document.getElementById('at-modal').classList.remove('open');
+};
+
+window.saveATConfig = function() {
+  const clientId   = document.getElementById('at-client-id').value.trim();
+  const projectUrl = document.getElementById('at-project-url').value.trim();
+  const redirectUrl = document.getElementById('at-redirect-url').value.trim() || 'http://127.0.0.1:5500/';
+
+  if (!clientId) { atToast('Please enter your App Client ID.', 'error'); return; }
+  if (!projectUrl) { atToast('Please enter the Audiotool project URL.', 'error'); return; }
+
+  saveATConfigToStorage({ clientId, projectUrl, redirectUrl });
+
+  const btn = document.getElementById('at-config-btn');
+  btn.classList.add('configured');
+  btn.textContent = '🎹 Audiotool ✓';
+
+  closeATModal();
+  atToast('Audiotool config saved! Click "Use as Instrument" on any instrument.', 'ok', 5000);
+};
+
+// Restore configured state on load
+(function restoreConfigState() {
+  const cfg = loadATConfig();
+  if (cfg?.clientId) {
+    const btn = document.getElementById('at-config-btn');
+    if (btn) { btn.classList.add('configured'); btn.textContent = '🎹 Audiotool ✓'; }
+  }
+})();
+
+// ── Audiotool SDK loader (lazy) ──────────────────────────────────────────────
+let audiotoolModule = null;
+async function getAudiotoolModule() {
+  if (audiotoolModule) return audiotoolModule;
+  atToast('Loading Audiotool SDK…', 'info', 3000);
+  // Use local pre-bundled file — esm.sh injects process polyfills that break the browser Wasm loader
+  audiotoolModule = await import('./audiotool-nexus.js');
+  return audiotoolModule;
+}
+
+// ── Core: send sample to Audiotool ──────────────────────────────────────────
+// 9 slots, each a semitone step in a pentatonic-style scale for musical variety:
+// C3, D3, E3, G3, A3, C4, D4, E4, G4  →  semitones relative to base: 0,2,4,7,9,12,14,16,19
+const AT_SLOT_SEMITONES = [0, 2, 4, 7, 9, 12, 14, 16, 19];
+const AT_SLOT_NAMES     = ['C3','D3','E3','G3','A3','C4','D4','E4','G4'];
+
+window.audiotoolSendSample = async function(btn, instName, type) {
+  const cfg = loadATConfig();
+  if (!cfg?.clientId) {
+    atToast('Configure Audiotool first — click the 🎹 Audiotool button in the header.', 'error', 5000);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.classList.add('sending');
+  btn.textContent = '⏳ Connecting…';
+
+  try {
+    // 1. Load Nexus SDK
+    const { audiotool } = await getAudiotoolModule();
+
+    // 2. Authenticate
+    atToast('Authenticating with Audiotool…', 'info', 4000);
+    const at = await audiotool({
+      clientId:    cfg.clientId,
+      redirectUrl: cfg.redirectUrl,
+      scope:       'project:write samples:write',
+    });
+
+    if (at.status === 'unauthenticated') {
+      atToast('Redirecting to Audiotool login…', 'info', 3000);
+      at.login();
+      return;
+    }
+
+    // 3. Generate a single WAV from the synthesized sound profile
+    btn.textContent = '⏳ Generating audio…';
+    atToast('Generating audio sample…', 'info', 3000);
+
+    const profile = window.soundProfiles?.[type] || window.soundProfiles?.pluck;
+    if (!profile) throw new Error('Sound profile not found for type: ' + type);
+
+    const buffer = await window.renderToBuffer(profile, 3);
+    const wavBlob = window.audioBufferToWav(buffer);
+
+    // 4. Upload the single WAV once — all 9 slots will share it, pitched via pitchSemitones
+    const displayName = `${instName} (World Instruments)`;
+    const fileName = `${instName.replace(/[^a-z0-9]/gi,'_').toLowerCase()}.wav`;
+    const file = new File([wavBlob], fileName, { type: 'audio/wav' });
+
+    btn.textContent = '⏳ Uploading…';
+    atToast(`Uploading "${displayName}"…`, 'info', 6000);
+
+    const upload = await at.samples.upload({ file, displayName });
+    if (upload instanceof Error) throw upload;
+
+    const uploaded = await upload.uploaded;
+    if (uploaded instanceof Error) throw uploaded;
+
+    btn.textContent = '⏳ Processing…';
+    atToast('Waiting for Audiotool to process the audio…', 'info', 8000);
+    const sampleMeta = await upload.ready;
+    if (sampleMeta instanceof Error) throw sampleMeta;
+
+    console.log('[AT] sampleMeta:', JSON.stringify({ name: sampleMeta.name, durationSeconds: sampleMeta.durationSeconds }));
+
+    // 5. Open project and build the 9-slot Machiniste
+    btn.textContent = '⏳ Building instrument…';
+    atToast(`Creating 9-note Machiniste for "${instName}"…`, 'info', 6000);
+
+    console.log('[AT] Opening project:', cfg.projectUrl);
+    const nexus = await at.open(cfg.projectUrl);
+    await nexus.start();
+    console.log('[AT] nexus started. Entity count before:', nexus.queryEntities.get().length);
+
+    await nexus.modify((t) => {
+      console.log('[AT] Inside modify — building 9-slot instrument…');
+
+      // ── Step A: Create 9 Sample entities, one per slot ──
+      // Each points to the same uploaded audio; pitch shifting is done by pitchSemitones on the channel
+      const sampleEntities = AT_SLOT_SEMITONES.map((_, i) => {
+        const s = t.create('sample', {
+          sampleName:      sampleMeta.name,
+          uploadStartTime: 0n,
+        });
+        console.log(`[AT] sample entity [${i}] (${AT_SLOT_NAMES[i]}):`, s.id);
+        return s;
+      });
+
+      // ── Step B: Create the Machiniste ──
+      const machiniste = t.create('machiniste', {
+        displayName: instName,
+        positionX:   200,
+        positionY:   200,
+      });
+      console.log('[AT] machiniste created:', machiniste.id);
+
+      // ── Step C: Load each sample into its channel with the right pitch offset ──
+      const channels = machiniste.fields.channels.array;
+      channels.forEach((chObj, i) => {
+        const ch = chObj.fields;
+        t.update(ch.sample, sampleEntities[i].location);
+        t.update(ch.pitchSemitones, AT_SLOT_SEMITONES[i]);
+        t.update(ch.gain, 0.75);
+        console.log(`[AT] channel ${i} → ${AT_SLOT_NAMES[i]} (semitones: ${AT_SLOT_SEMITONES[i]})`);
+      });
+
+      // ── Step D: Create a mixer channel ──
+      const mixerCh = t.create('mixerChannel', { displayName: instName });
+      console.log('[AT] mixerChannel created:', mixerCh.id);
+
+      // ── Step E: Wire Machiniste → mixer channel ──
+      t.create('desktopAudioCable', {
+        fromSocket: machiniste.fields.mainOutput.location,
+        toSocket:   mixerCh.fields.audioInput.location,
+      });
+      console.log('[AT] cable wired. modify done.');
+    });
+
+    console.log('[AT] Entity count after:', nexus.queryEntities.get().length);
+    await nexus.stop();
+    console.log('[AT] nexus stopped — changes flushed ✓');
+
+    // 6. Done!
+    btn.textContent = '🎹 In Audiotool ✓';
+    btn.style.color = '#a0f0c0';
+    btn.style.borderColor = 'rgba(100,240,150,0.4)';
+    atToast(`✓ "${instName}" added as 9-note Machiniste (${AT_SLOT_NAMES.join(', ')})!`, 'ok', 8000);
+
+  } catch (err) {
+    console.error('[Audiotool]', err);
+    const msg = err?.message || String(err);
+    atToast(`Audiotool error: ${msg}`, 'error', 8000);
+    btn.textContent = '🎹 Use as Instrument';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('sending');
+  }
+};
+
+// Close modal on outside click
+document.getElementById('at-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeATModal();
+});
+</script>
+</body>
+</html>
