@@ -23,6 +23,9 @@ from models import AUDIO, DATA
 AUDIO_DIR = Path(__file__).parent / "audio"
 AUDIO_DIR.mkdir(exist_ok=True)
 
+AUDIO_CLEAN_DIR = Path(__file__).parent / "audio_clean"
+AUDIO_CLEAN_DIR.mkdir(exist_ok=True)
+
 SUPPORTED_EXTENSIONS = [".mp3", ".ogg", ".wav", ".m4a", ".flac"]
 
 app = FastAPI(
@@ -40,6 +43,9 @@ app.add_middleware(
 
 # Serve the audio folder as static files too (optional direct access)
 app.mount("/audio-files", StaticFiles(directory=str(AUDIO_DIR)), name="audio-files")
+
+# Serve clean extracted samples (used by the Audiotool integration)
+app.mount("/audio_clean", StaticFiles(directory=str(AUDIO_CLEAN_DIR)), name="audio-clean")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
