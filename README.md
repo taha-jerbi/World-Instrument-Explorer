@@ -69,12 +69,7 @@ Click **🎹 Audiotool** in the top-right header and enter:
 
 ## 🎵 Audio Samples
 
-Audio samples are not included in the repo. To download them:
-
-```bash
-pip install requests certifi
-python download_audio.py
-```
+Audio samples are included in the repo. 
 
 This fetches CC-licensed samples from Freesound.org into the `audio/` folder. You'll need a [Freesound API key](https://freesound.org/apiv2/apply/).
 
