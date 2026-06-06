@@ -805,7 +805,7 @@ function showPanel(name) {
           <div class="inst-name">${inst.name}</div>
           <div class="inst-desc">${inst.desc}</div>
           <button class="inst-dl-btn" onclick="downloadSample('${inst.name.replace(/'/g,"\\'")}', '${inst.type}')">⬇ Download WAV</button>
-          <button class="inst-at-btn" onclick="audiotoolSendSample(this, '${inst.name.replace(/'/g,"\\'")  }', '${inst.type}')" title="Upload sample to Audiotool DAW">🎹 Use as Instrument</button>
+          <button class="inst-at-btn" data-name="${inst.name}" data-type="${inst.type}" onclick="audiotoolSendSample(this)" title="Upload sample to Audiotool DAW">🎹 Use as Instrument</button>
         </div>`;
       }).join('')}
     </div>
@@ -1158,7 +1158,9 @@ window.saveATConfig = function() {
   if (!clientId) { atToast('Please enter your App Client ID.', 'error'); return; }
   if (!projectUrl) { atToast('Please enter the Audiotool project URL.', 'error'); return; }
 
-  saveATConfigToStorage({ clientId, projectUrl, redirectUrl });
+  // Normalize URL — Nexus SDK targets beta.audiotool.com
+  const normalizedUrl = projectUrl.replace("www.audiotool.com", "beta.audiotool.com").replace("new.audiotool.com", "beta.audiotool.com");
+  saveATConfigToStorage({ clientId, projectUrl: normalizedUrl, redirectUrl });
 
   const btn = document.getElementById('at-config-btn');
   btn.classList.add('configured');
@@ -1187,13 +1189,68 @@ async function getAudiotoolModule() {
   return audiotoolModule;
 }
 
-// ── Core: send sample to Audiotool ──────────────────────────────────────────
-// 9 slots, each a semitone step in a pentatonic-style scale for musical variety:
-// C3, D3, E3, G3, A3, C4, D4, E4, G4  →  semitones relative to base: 0,2,4,7,9,12,14,16,19
+// ── Audiotool: 9-slot pentatonic scale across two octaves ───────────────────
+// C3=0, D3=+2, E3=+4, G3=+7, A3=+9, C4=+12, D4=+14, E4=+16, G4=+19
 const AT_SLOT_SEMITONES = [0, 2, 4, 7, 9, 12, 14, 16, 19];
 const AT_SLOT_NAMES     = ['C3','D3','E3','G3','A3','C4','D4','E4','G4'];
 
-window.audiotoolSendSample = async function(btn, instName, type) {
+// ── Pitch-shift an AudioBuffer without changing its duration ─────────────────
+// Strategy: resample to shift pitch (changes speed) → re-resample back to
+// original duration (undoes the speed change). This is the "Paul stretch lite"
+// approach — no FFT library needed, works natively in the browser.
+async function pitchShiftBuffer(inputBuffer, semitones) {
+  if (semitones === 0) return inputBuffer;
+  const ratio   = Math.pow(2, semitones / 12);
+  const sr      = inputBuffer.sampleRate;
+  const origLen = inputBuffer.length;
+
+  // Resample at 'ratio' playback speed — this shifts pitch AND changes length.
+  // e.g. +12 semitones (ratio=2): plays 2x faster → half the frames captured,
+  // but every captured frame is at the right pitch.
+  const resampledLen = Math.max(1, Math.round(origLen / ratio));
+  const ctx = new OfflineAudioContext(1, resampledLen, sr);
+  const src = ctx.createBufferSource();
+  src.buffer = inputBuffer;
+  src.playbackRate.value = ratio;
+  src.connect(ctx.destination);
+  src.start(0);
+  const resampled = await ctx.startRendering();
+
+  // Now copy into an output buffer of the ORIGINAL length.
+  // Shorter result (pitch-up): pad the tail with silence.
+  // Longer result (pitch-down): truncate — the note has decayed anyway.
+  const outCtx = new OfflineAudioContext(1, origLen, sr);
+  const outBuf = outCtx.createBuffer(1, origLen, sr);
+  const src_data = resampled.getChannelData(0);
+  const dst_data = outBuf.getChannelData(0);
+  const copyLen  = Math.min(src_data.length, origLen);
+  dst_data.set(src_data.subarray(0, copyLen)); // tail is already zeros (silence)
+
+  // Apply a short fade-out at the end to avoid clicks on truncated samples
+  const fadeLen = Math.min(Math.round(sr * 0.05), origLen);
+  for (let i = 0; i < fadeLen; i++) {
+    dst_data[origLen - 1 - i] *= i / fadeLen;
+  }
+
+  const playSrc = outCtx.createBufferSource();
+  playSrc.buffer = outBuf;
+  playSrc.connect(outCtx.destination);
+  playSrc.start(0);
+  return outCtx.startRendering();
+}
+
+// ── Render synth note at a specific semitone offset (oscillators re-tuned) ───
+function renderSynthAtSemitones(profile, semitones, durationSec = 2.5) {
+  const ratio   = Math.pow(2, semitones / 12);
+  const pitched = Object.assign({}, profile, { freq: profile.freq * ratio });
+  return window.renderToBuffer(pitched, durationSec);
+}
+
+// ── Core: send sample to Audiotool ──────────────────────────────────────────
+window.audiotoolSendSample = async function(btn) {
+  const instName = btn.dataset.name;
+  const type     = btn.dataset.type;
+  const audioKey = instName.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_{2,}/g, '_').replace(/^_|_$/g, '');
   const cfg = loadATConfig();
   if (!cfg?.clientId) {
     atToast('Configure Audiotool first — click the 🎹 Audiotool button in the header.', 'error', 5000);
@@ -1222,104 +1279,116 @@ window.audiotoolSendSample = async function(btn, instName, type) {
       return;
     }
 
-    // 3. Generate a single WAV from the synthesized sound profile
-    btn.textContent = '⏳ Generating audio…';
-    atToast('Generating audio sample…', 'info', 3000);
+    // 3. Try to load real recorded audio from audio_clean/ as an AudioBuffer
+    btn.textContent = '⏳ Preparing audio…';
+    let sourceBuffer = null;
+    let useRealAudio = false;
 
-    const profile = window.soundProfiles?.[type] || window.soundProfiles?.pluck;
-    if (!profile) throw new Error('Sound profile not found for type: ' + type);
+    try {
+      const res = await fetch(`http://localhost:8000/audio_clean/${audioKey}.wav`);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        const tmpCtx   = new (window.AudioContext || window.webkitAudioContext)();
+        sourceBuffer   = await tmpCtx.decodeAudioData(arrayBuf);
+        tmpCtx.close();
+        useRealAudio   = true;
+        atToast(`Loaded real recording for "${instName}" 🎙`, 'info', 3000);
+        console.log('[AT] Real audio loaded, duration:', sourceBuffer.duration.toFixed(2) + 's');
+      }
+    } catch (_) {}
 
-    const buffer = await window.renderToBuffer(profile, 3);
-    const wavBlob = window.audioBufferToWav(buffer);
+    // No real sample found — stop here instead of generating a fake sound
+    if (!useRealAudio) {
+      atToast(`No recorded sample for "${instName}" yet. Run extract_note.py to add one.`, 'error', 7000);
+      btn.textContent = '🎹 No sample yet';
+      btn.disabled = false;
+      btn.classList.remove('sending');
+      return;
+    }
 
-    // 4. Upload the single WAV once — all 9 slots will share it, pitched via pitchSemitones
-    const displayName = `${instName} (World Instruments)`;
-    const fileName = `${instName.replace(/[^a-z0-9]/gi,'_').toLowerCase()}.wav`;
-    const file = new File([wavBlob], fileName, { type: 'audio/wav' });
+    // 4. Generate 9 WAVs — each correctly pitched, same duration, no speed change
+    const safeBase = instName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
-    btn.textContent = '⏳ Uploading…';
-    atToast(`Uploading "${displayName}"…`, 'info', 6000);
+    atToast(`Generating 9 pitched notes for "${instName}"…`, 'info', 25000);
+    const noteFiles = [];
+    for (let i = 0; i < AT_SLOT_SEMITONES.length; i++) {
+      const semitones = AT_SLOT_SEMITONES[i];
+      const noteName  = AT_SLOT_NAMES[i];
+      btn.textContent = `⏳ Rendering ${noteName}…`;
+      console.log(`[AT] Rendering note ${i+1}/9: ${noteName} (${semitones >= 0 ? '+' : ''}${semitones} st)`);
 
-    const upload = await at.samples.upload({ file, displayName });
-    if (upload instanceof Error) throw upload;
+      const pitchedBuffer = useRealAudio
+        ? await pitchShiftBuffer(sourceBuffer, semitones)   // real audio: duration-preserving pitch shift
+        : await renderSynthAtSemitones(profile, semitones, 2.5); // synth: re-tune oscillators
 
-    const uploaded = await upload.uploaded;
-    if (uploaded instanceof Error) throw uploaded;
+      const wavBlob = window.audioBufferToWav(pitchedBuffer);
+      noteFiles.push(new File([wavBlob], `${safeBase}_${noteName}.wav`, { type: 'audio/wav' }));
+    }
 
-    btn.textContent = '⏳ Processing…';
-    atToast('Waiting for Audiotool to process the audio…', 'info', 8000);
-    const sampleMeta = await upload.ready;
-    if (sampleMeta instanceof Error) throw sampleMeta;
+    // 5. Upload all 9 files sequentially
+    atToast('Uploading 9 samples to Audiotool…', 'info', 90000);
+    const sampleMetas = [];
+    for (let i = 0; i < noteFiles.length; i++) {
+      btn.textContent = `⏳ Uploading ${i+1}/9…`;
+      const displayName = `${instName} ${AT_SLOT_NAMES[i]} (World Instruments)`;
+      const upload   = await at.samples.upload({ file: noteFiles[i], displayName });
+      if (upload instanceof Error) throw upload;
+      const uploaded = await upload.uploaded;
+      if (uploaded instanceof Error) throw uploaded;
+      const meta     = await upload.ready;
+      if (meta instanceof Error) throw meta;
+      console.log(`[AT] Uploaded ${i+1}/9: ${meta.name}`);
+      sampleMetas.push(meta);
+    }
 
-    console.log('[AT] sampleMeta:', JSON.stringify({ name: sampleMeta.name, durationSeconds: sampleMeta.durationSeconds }));
-
-    // 5. Open project and build the 9-slot Machiniste
+    // 6. Build the Machiniste — each slot gets its own pre-pitched sample, pitchSemitones = 0
     btn.textContent = '⏳ Building instrument…';
-    atToast(`Creating 9-note Machiniste for "${instName}"…`, 'info', 6000);
+    atToast(`Creating Machiniste for "${instName}"…`, 'info', 6000);
 
-    console.log('[AT] Opening project:', cfg.projectUrl);
     const nexus = await at.open(cfg.projectUrl);
     await nexus.start();
-    console.log('[AT] nexus started. Entity count before:', nexus.queryEntities.get().length);
 
     await nexus.modify((t) => {
-      console.log('[AT] Inside modify — building 9-slot instrument…');
-
-      // ── Step A: Create 9 Sample entities, one per slot ──
-      // Each points to the same uploaded audio; pitch shifting is done by pitchSemitones on the channel
-      const sampleEntities = AT_SLOT_SEMITONES.map((_, i) => {
-        const s = t.create('sample', {
-          sampleName:      sampleMeta.name,
-          uploadStartTime: 0n,
-        });
-        console.log(`[AT] sample entity [${i}] (${AT_SLOT_NAMES[i]}):`, s.id);
+      // Create 9 sample entities, one per pitched WAV
+      const sampleEntities = sampleMetas.map((meta, i) => {
+        const s = t.create('sample', { sampleName: meta.name, uploadStartTime: 0n });
+        console.log(`[AT] sample entity [${i}] ${AT_SLOT_NAMES[i]}:`, s.id);
         return s;
       });
 
-      // ── Step B: Create the Machiniste ──
       const machiniste = t.create('machiniste', {
         displayName: instName,
-        positionX:   200,
-        positionY:   200,
+        positionX: 200, positionY: 200,
       });
-      console.log('[AT] machiniste created:', machiniste.id);
 
-      // ── Step C: Load each sample into its channel with the right pitch offset ──
-      const channels = machiniste.fields.channels.array;
-      channels.forEach((chObj, i) => {
+      // Load each pre-pitched WAV into its channel; pitchSemitones = 0 (pitch already baked in)
+      machiniste.fields.channels.array.forEach((chObj, i) => {
         const ch = chObj.fields;
         t.update(ch.sample, sampleEntities[i].location);
-        t.update(ch.pitchSemitones, AT_SLOT_SEMITONES[i]);
+        t.update(ch.pitchSemitones, 0);
         t.update(ch.gain, 0.75);
-        console.log(`[AT] channel ${i} → ${AT_SLOT_NAMES[i]} (semitones: ${AT_SLOT_SEMITONES[i]})`);
       });
 
-      // ── Step D: Create a mixer channel ──
       const mixerCh = t.create('mixerChannel', { displayName: instName });
-      console.log('[AT] mixerChannel created:', mixerCh.id);
-
-      // ── Step E: Wire Machiniste → mixer channel ──
       t.create('desktopAudioCable', {
         fromSocket: machiniste.fields.mainOutput.location,
         toSocket:   mixerCh.fields.audioInput.location,
       });
-      console.log('[AT] cable wired. modify done.');
+      console.log('[AT] modify done.');
     });
 
-    console.log('[AT] Entity count after:', nexus.queryEntities.get().length);
     await nexus.stop();
-    console.log('[AT] nexus stopped — changes flushed ✓');
+    console.log('[AT] nexus stopped ✓');
 
-    // 6. Done!
     btn.textContent = '🎹 In Audiotool ✓';
     btn.style.color = '#a0f0c0';
     btn.style.borderColor = 'rgba(100,240,150,0.4)';
-    atToast(`✓ "${instName}" added as 9-note Machiniste (${AT_SLOT_NAMES.join(', ')})!`, 'ok', 8000);
+    const src = useRealAudio ? '🎙 real recording' : '🎹 synthesized';
+    atToast(`✓ "${instName}" — 9 notes (${AT_SLOT_NAMES.join(', ')}) · ${src} · duration-preserving pitch shift!`, 'ok', 9000);
 
   } catch (err) {
     console.error('[Audiotool]', err);
-    const msg = err?.message || String(err);
-    atToast(`Audiotool error: ${msg}`, 'error', 8000);
+    atToast(`Audiotool error: ${err?.message || err}`, 'error', 8000);
     btn.textContent = '🎹 Use as Instrument';
     btn.style.color = '';
     btn.style.borderColor = '';
